@@ -44,3 +44,8 @@ export interface HistoryItem {
   model: ModelType;
   tone: ToneType;
 }
+
+export interface FAQItem {
+  question: string;
+  answer: string;
+}

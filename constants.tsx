@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Scale, HeartPulse, Briefcase, Cpu, GraduationCap, Zap, Search, Globe, User, Shield, ZapOff, Sparkles as SparklesIcon } from 'lucide-react';
-import { NicheData, FeatureItem, PricingTier, ToneData } from './types';
+import { NicheData, FeatureItem, PricingTier, ToneData, FAQItem } from './types';
 
 export const NICHES: NicheData[] = [
   {
@@ -86,7 +86,7 @@ export const PRICING_TIERS: PricingTier[] = [
     buttonText: "Use Now"
   },
   {
-    name: "Gist Pro",
+    name: "Pro",
     price: "$19",
     description: "The choice for professionals and legal teams.",
     features: [
@@ -94,7 +94,7 @@ export const PRICING_TIERS: PricingTier[] = [
       "Advanced AI Engine",
       "File/PDF Analysis",
       "Save History",
-      "5000 Character Limit"
+      "5,000 Character Limit"
     ],
     buttonText: "Upgrade to Pro",
     isPopular: true
@@ -107,12 +107,33 @@ export const PRICING_TIERS: PricingTier[] = [
       "Everything in Pro",
       "25,000 Character Limit",
       "OCR & Image Analysis",
-      "Visual Explanations",
       "Legal/Medical Deep Dives",
       "Contextual Hover & Chat",
-      "Team Management (10 Users)",
-      "Browser Extension Access"
+      "Team Management (10 Users)"
     ],
     buttonText: "Get Enterprise"
+  }
+];
+
+export const FAQ_ITEMS: FAQItem[] = [
+  {
+    question: "How accurate is the simplification?",
+    answer: "babysimple uses state-of-the-art AI models like Gemini 1.5 Pro and Llama 3 to ensure high accuracy. While it simplifies the language, it meticulously preserves the original meaning and legal/technical weight of the context."
+  },
+  {
+    question: "Can I use babysimple for medical or legal documents?",
+    answer: "Yes! babysimple is designed specifically for high-stakes industries. However, while we provide clarity, our output should be used for informational purposes and not as a replacement for professional legal or medical advice."
+  },
+  {
+    question: "Is my data safe?",
+    answer: "Absolutely. We employ a zero-knowledge architecture for our Starter plan. For Pro and Enterprise, data is encrypted and we strictly follow industry-standard privacy protocols. We do not sell your data."
+  },
+  {
+    question: "Can I cancel my subscription anytime?",
+    answer: "Yes, you can cancel your Pro or Enterprise plan at any time from your dashboard. You will retain access to premium features until the end of your current billing cycle."
+  },
+  {
+    question: "Does babysimple support multiple languages?",
+    answer: "Yes, babysimple supports simplification in over 20 languages. You can input text in one language and request the simplified output in another."
   }
 ];
