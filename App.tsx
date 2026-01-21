@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Sun, Moon, Zap, Menu, X, ArrowRight, Check, Github, Linkedin, Copy, Share2, Sparkles, Layers, Wand2, LayoutDashboard, History, Settings, LogOut, ChevronRight, FileText, Activity, CreditCard, ShieldCheck, Globe, Users, Trash2, Plus, Minus, HelpCircle, Home } from 'lucide-react';
+import { Sun, Moon, Zap, Menu, X, ArrowRight, Check, Github, Linkedin, Copy, Share2, Sparkles, Layers, Wand2, LayoutDashboard, History, Settings, LogOut, ChevronRight, FileText, Activity, CreditCard, ShieldCheck, Globe, Users, Trash2, Plus, Minus, HelpCircle, Home, ZapOff, AlertCircle, PhoneCall } from 'lucide-react';
 import { NICHES, FEATURES, PRICING_TIERS, TONES, FAQ_ITEMS } from './constants';
 import { NicheType, ViewType, ToneType, ModelType, HistoryItem } from './types';
 import { BLOG_POSTS, BlogPost } from './src/blogContent';
@@ -34,6 +34,17 @@ const App: React.FC = () => {
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [activeModel, setActiveModel] = useState<ModelType>('Gemini 1.5 Flash');
+
+  const getTierLimits = () => {
+    switch (userTier) {
+      case 'Enterprise':
+        return { charLimit: 25000, dailyCap: Infinity, fileLimit: 20 * 1024 * 1024 };
+      case 'Pro':
+        return { charLimit: 5000, dailyCap: Infinity, fileLimit: 5 * 1024 * 1024 };
+      default:
+        return { charLimit: 800, dailyCap: 5, fileLimit: 1 * 1024 * 1024 };
+    }
+  };
   const [targetLanguage, setTargetLanguage] = useState<string>('English');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -115,7 +126,7 @@ const App: React.FC = () => {
     return 'Gemini 1.5 Pro';
   };
 
-  const saveHistory = (result: string, model: ModelType) => {
+  const saveHistory = async (result: string, model: ModelType) => {
     const newItem: HistoryItem = {
       id: Date.now().toString(),
       timestamp: Date.now(),
@@ -131,6 +142,21 @@ const App: React.FC = () => {
       localStorage.setItem('gist_history', JSON.stringify(updated));
       return updated;
     });
+
+    // Save to Supabase if authenticated
+    if (isAuthenticated) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('history').insert({
+          user_id: user.id,
+          niche: selectedNiche,
+          input: inputText,
+          output: result,
+          model: model,
+          tone: selectedTone
+        });
+      }
+    }
 
     if (userTier === 'Starter') {
       incrementUsage();
@@ -151,11 +177,6 @@ const App: React.FC = () => {
       }
     }
 
-    // Load Team
-    const savedTeam = localStorage.getItem('gist_team_list');
-    if (savedTeam) {
-      try { setTeamMembers(JSON.parse(savedTeam)); } catch (e) { }
-    }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
@@ -167,8 +188,26 @@ const App: React.FC = () => {
         setIsAuthenticated(false);
         setUserEmail('');
         setUserTier('Starter');
+        // Clear history on sign out
+        setHistory([]);
+        localStorage.removeItem('gist_history');
+        localStorage.removeItem('gist_team_list');
       }
     });
+
+    // Check for payment success in URL and refetch profile
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('payment_success') === 'true') {
+      console.log("Payment success detected in URL, refreshing profile...");
+      // Wait a bit for webhook to process, then refetch
+      setTimeout(() => {
+        if (supabase.auth.getSession()) {
+          supabase.auth.getSession().then(({ data }) => {
+            if (data.session) fetchProfile(data.session.user.id);
+          });
+        }
+      }, 3000);
+    }
 
     return () => subscription.unsubscribe();
   }, []);
@@ -215,6 +254,39 @@ const App: React.FC = () => {
       if (normalizedTier === 'Gist Enterprise') normalizedTier = 'Enterprise';
       console.log("Setting User Tier to:", normalizedTier);
       setUserTier(normalizedTier as any);
+
+      // Fetch History from Database
+      const { data: historyData } = await supabase
+        .from('history')
+        .select('*')
+        .eq('user_id', userId)
+        .order('timestamp', { ascending: false })
+        .limit(50);
+
+      if (historyData) {
+        const formattedHistory: HistoryItem[] = historyData.map(item => ({
+          id: item.id,
+          timestamp: new Date(item.timestamp).getTime(),
+          niche: item.niche as any,
+          input: item.input,
+          output: item.output,
+          model: item.model as any,
+          tone: item.tone as any
+        }));
+        setHistory(formattedHistory);
+      }
+
+      // Fetch Team Members if Enterprise
+      if (normalizedTier === 'Enterprise') {
+        const { data: teamData } = await supabase
+          .from('team_members')
+          .select('*')
+          .eq('admin_id', userId);
+
+        if (teamData) {
+          setTeamMembers(teamData.map(m => ({ email: m.member_email, role: m.role })));
+        }
+      }
     } else {
       console.warn("No profile found for user:", userId);
       if (error) console.error("Profile fetch error:", error);
@@ -235,32 +307,29 @@ const App: React.FC = () => {
         });
         if (error) throw error;
 
-
-        // Initial profile creation (SQL trigger handles this usually, but good to be safe)
+        // Initial profile creation
         if (data.user) {
           await supabase.from('profiles').upsert({
             id: data.user.id,
             email: email,
-            tier: 'Starter'
+            tier: 'Starter' // Always start at Starter
           });
 
           // If a session was returned (email confirmation off), update local state
           if (data.session) {
             setIsAuthenticated(true);
             setUserEmail(email);
+            // New account, ensure history is empty
+            setHistory([]);
+            localStorage.removeItem('gist_history');
           }
         }
 
-        console.log("Signup successful. pendingTier state:", pendingTier);
+        console.log("Signup successful. Intent:", pendingTier);
 
-        // Direct access for now & Persist
+        // If user signed up with intent to buy Pro/Enterprise, redirect them now
         if (pendingTier !== 'Starter') {
-          setUserTier(pendingTier);
-          setView('dashboard');
-          setDashboardView('workspace');
-          if (data.user) {
-            await supabase.from('profiles').update({ tier: pendingTier }).eq('id', data.user.id);
-          }
+          redirectToPayment(pendingTier, email);
         } else {
           if (data.session) setView('dashboard');
         }
@@ -271,25 +340,63 @@ const App: React.FC = () => {
         });
         if (error) throw error;
 
-        // Fetch profile to see current tier
-        const { data: profile } = await supabase.from('profiles').select('tier').eq('id', data.user.id).single();
-        const currentTier = profile?.tier || 'Starter';
+        // Fetch actual profile from DB (The Source of Truth)
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tier, email')
+          .eq('id', data.user.id)
+          .single();
 
-        // If they requested a higher tier, trigger purchase flow
-        if (pendingTier !== 'Starter') {
-          handlePurchase(pendingTier);
-        } else {
+        const dbTier = profile?.tier || 'Starter';
+        const dbEmail = profile?.email || email; // Fallback to login email
+
+        // Normalize tier names
+        let normalizedTier = dbTier;
+        if (normalizedTier === 'Gist Pro') normalizedTier = 'Pro';
+        if (normalizedTier === 'Gist Enterprise') normalizedTier = 'Enterprise';
+
+        setUserTier(normalizedTier as any);
+        setUserEmail(dbEmail);
+        setIsAuthenticated(true);
+
+        console.log(`Login successful. DB Tier: ${normalizedTier}, Intent: ${pendingTier}`);
+
+        // Redirection Logic:
+        // 1. If user already has the pending tier or higher, go to dashboard
+        if (normalizedTier === pendingTier || (normalizedTier === 'Enterprise' && pendingTier === 'Pro')) {
+          setView('dashboard');
+        }
+        // 2. If user intended to buy a higher tier than they have, redirect to Dodo
+        else if (pendingTier !== 'Starter' && normalizedTier === 'Starter') {
+          redirectToPayment(pendingTier, email);
+        }
+        // 3. Default to dashboard for regular logins
+        else {
           setView('dashboard');
         }
       }
 
       setShowAuthModal(false);
       setPassword('');
-      // window.location.reload(); // Removed to allow redirection logic to stick
     } catch (err: any) {
       alert(err.message);
     } finally {
       setIsAuthLoading(false);
+    }
+  };
+
+  const redirectToPayment = (tier: 'Pro' | 'Enterprise', email: string) => {
+    const paymentUrl = tier === 'Pro'
+      ? import.meta.env.VITE_DODO_PAYMENT_LINK_PRO
+      : import.meta.env.VITE_DODO_PAYMENT_LINK_ENTERPRISE;
+
+    if (paymentUrl) {
+      const returnUrl = `${window.location.origin}?payment_success=true`;
+      const finalUrl = `${paymentUrl}&customer_email=${encodeURIComponent(email || '')}&redirect_url=${encodeURIComponent(returnUrl)}`;
+      console.log(`Redirecting to payment: ${finalUrl}`);
+      window.location.href = finalUrl;
+    } else {
+      alert("Payment link configuration missing. Please check settings.");
     }
   };
 
@@ -301,24 +408,9 @@ const App: React.FC = () => {
     if (!isAuthenticated) {
       setAuthMode('signup');
       setShowAuthModal(true);
+      // The handleAuth function will take over after successful signup/login
     } else {
-      // Dodo Payment Redirection
-      const paymentUrl = tier === 'Pro'
-        ? import.meta.env.VITE_DODO_PAYMENT_LINK_PRO
-        : import.meta.env.VITE_DODO_PAYMENT_LINK_ENTERPRISE;
-
-      if (paymentUrl) {
-        // Append email to pre-fill if supported or track
-        // Dodo might support pre-filling email via query param, attempting standard 'email' or 'customer_email'
-        // We also append a redirect_url to come back to the dashboard
-        const returnUrl = `${window.location.origin}?payment_success=true`;
-        const finalUrl = `${paymentUrl}&customer_email=${encodeURIComponent(userEmail || '')}&redirect_url=${encodeURIComponent(returnUrl)}`;
-
-        console.log(`Redirecting to payment: ${finalUrl}`);
-        window.location.href = finalUrl;
-      } else {
-        alert("Payment link configuration missing. Please check settings.");
-      }
+      redirectToPayment(tier, userEmail);
     }
   };
 
@@ -327,6 +419,8 @@ const App: React.FC = () => {
     setIsAuthenticated(false);
     setUserTier('Starter');
     setHistory([]);
+    localStorage.removeItem('gist_history');
+    localStorage.removeItem('gist_team_list');
     setView('landing');
   };
 
@@ -434,17 +528,32 @@ const App: React.FC = () => {
       }
     }
 
-    console.log("File Upload Check - Current Tier:", currentTier, "File Name:", file.name, "File Type:", file.type);
+    const limits = getTierLimits();
+
+    // Size Limit Check
+    if (file.size > limits.fileLimit) {
+      alert(`File too large: ${userTier} plan allows up to ${(limits.fileLimit / (1024 * 1024)).toFixed(0)}MB. Please upgrade for larger files.`);
+      return;
+    }
 
     const fileName = file.name.toLowerCase();
     const isDoc = fileName.endsWith('.docx') || fileName.endsWith('.doc');
     const isPdf = file.type === 'application/pdf' || fileName.endsWith('.pdf');
+    const isImage = file.type.startsWith('image/') || fileName.endsWith('.png') || fileName.endsWith('.jpg') || fileName.endsWith('.jpeg');
 
-    // Pro Check
-    if (currentTier === 'Starter' && (isPdf || isDoc)) {
+    // Pro Check (PDF/DOCX)
+    if (userTier === 'Starter' && (isPdf || isDoc)) {
       setAuthMode('signup');
       setShowAuthModal(true);
       alert("PDF and DOCX analysis is a Pro feature. Please upgrade or login to unlock.");
+      return;
+    }
+
+    // Enterprise Check (Image/OCR)
+    if (userTier !== 'Enterprise' && isImage) {
+      setAuthMode('signup');
+      setShowAuthModal(true);
+      alert("Stay Ahead with Enterprise: Unlock Image Analysis & OCR.");
       return;
     }
 
@@ -474,15 +583,7 @@ const App: React.FC = () => {
         setInputText(result.value);
         setDashboardView('workspace');
       }
-      else if (file.type.startsWith('image/')) {
-        // Enterprise Clean Check
-        if (userTier !== 'Enterprise') {
-          setAuthMode('signup');
-          setShowAuthModal(true);
-          alert("Stay Ahead with Enterprise: Unlock Image Analysis & OCR.");
-          return;
-        }
-
+      else if (isImage) {
         setInputText("🔍 Scanning Document... (AI OCR in progress)");
         setDashboardView('workspace');
 
@@ -516,7 +617,13 @@ const App: React.FC = () => {
     const currentText = overrideText || inputText;
     if (!currentText) return;
 
-    if (userTier === 'Starter' && usageCount >= 5) {
+    const limits = getTierLimits();
+    if (currentText.length > limits.charLimit) {
+      alert(`Limit exceeded: ${userTier} plan allows up to ${limits.charLimit.toLocaleString()} characters. Please trim your text or upgrade.`);
+      return;
+    }
+
+    if (userTier === 'Starter' && usageCount >= limits.dailyCap) {
       setShowLimitModal(true);
       return;
     }
@@ -766,13 +873,30 @@ const App: React.FC = () => {
                   return;
                 }
 
-                // 2. Update Local State & Persist List (LocalStorage for MVP)
+                // 2. Persist to Team Members Table
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) return;
+
+                const { error: insertError } = await supabase
+                  .from('team_members')
+                  .insert({
+                    admin_id: session.user.id,
+                    member_email: emailToAdd,
+                    member_id: targetUserId,
+                    role: 'Member'
+                  });
+
+                if (insertError) {
+                  console.error("Team Insert Error:", insertError);
+                  alert("Failed to add member to database. They might already be in a team.");
+                  return;
+                }
+
+                // 3. Update Local State
                 const newMember = { email: emailToAdd, role: 'Member' };
-                const newList = [...teamMembers, newMember];
-                setTeamMembers(newList);
-                localStorage.setItem('gist_team_list', JSON.stringify(newList));
+                setTeamMembers(prev => [...prev, newMember]);
                 setTeamEmailInput('');
-                alert(`${emailToAdd} has been upgraded to Enterprise!`);
+                alert(`${emailToAdd} has been upgraded to Enterprise and added to your team!`);
 
               } catch (err) {
                 console.error("Invite Exception:", err);
@@ -806,7 +930,23 @@ const App: React.FC = () => {
                 </div>
               </div>
               <button
-                onClick={() => setTeamMembers(prev => prev.filter((_, i) => i !== idx))}
+                onClick={async () => {
+                  const { data: { session } } = await supabase.auth.getSession();
+                  if (!session) return;
+
+                  const { error } = await supabase
+                    .from('team_members')
+                    .delete()
+                    .eq('admin_id', session.user.id)
+                    .eq('member_email', member.email);
+
+                  if (error) {
+                    alert("Failed to remove member. Please try again.");
+                    return;
+                  }
+
+                  setTeamMembers(prev => prev.filter((_, i) => i !== idx));
+                }}
                 className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
               >
                 <Trash2 className="w-5 h-5" />
@@ -899,17 +1039,19 @@ const App: React.FC = () => {
             </button>
             <div>
               <div className="flex items-center gap-4 mb-1">
-                <h1 className="text-4xl font-black tracking-tighter uppercase italic">{userTier} Workspace</h1>
+                <h1 className="text-4xl font-black tracking-tighter uppercase italic">{userTier === 'Starter' ? 'Processing Payment' : `${userTier} Workspace`}</h1>
                 {userTier === 'Starter' && isAuthenticated && (
                   <button
-                    onClick={() => (supabase.auth.getUser()).then(({ data }) => data.user && fetchProfile(data.user.id))}
-                    className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-indigo-500 bg-indigo-500/10 px-3 py-1 rounded-full hover:bg-indigo-500/20 transition-all pointer-events-auto"
+                    onClick={() => supabase.auth.getSession().then(({ data }) => data.session && fetchProfile(data.session.user.id))}
+                    className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-indigo-500 bg-indigo-500/10 px-3 py-1 rounded-full hover:bg-indigo-500/20 transition-all pointer-events-auto animate-pulse"
                   >
-                    <Zap className="w-3 h-3" /> Sync Plan
+                    <Zap className="w-3 h-3" /> Refresh Status
                   </button>
                 )}
               </div>
-              <p className="opacity-40 font-bold uppercase tracking-[0.2em] text-[10px]">Active Session & Control Center</p>
+              <p className="opacity-40 font-bold uppercase tracking-[0.2em] text-[10px]">
+                {userTier === 'Starter' ? 'Your premium access is being unlocked. Hang tight.' : 'Active Session & Control Center'}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -960,16 +1102,26 @@ const App: React.FC = () => {
                   value={inputText}
                   onChange={(e) => {
                     const text = e.target.value;
-                    if (text.length <= getCharacterLimit()) {
+                    const limit = getTierLimits().charLimit;
+                    if (text.length <= limit) {
                       setInputText(text);
                     }
                   }}
                   placeholder="Paste your materials here..."
-                  maxLength={getCharacterLimit()}
+                  maxLength={getTierLimits().charLimit}
                   className="w-full h-64 bg-transparent resize-none focus:outline-none text-xl leading-relaxed"
                 ></textarea>
                 <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
-                  <span className={`text-xs font-black uppercase tracking-widest ${inputText.length >= getCharacterLimit() ? 'text-red-500' : 'text-slate-500'}`}>{inputText.length} / {getCharacterLimit().toLocaleString()} Characters</span>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${inputText.length > getTierLimits().charLimit ? 'text-red-500' : 'text-slate-500 opacity-50'}`}>
+                      {inputText.length.toLocaleString()} / {getTierLimits().charLimit.toLocaleString()} Characters
+                    </span>
+                    {inputText.length > getTierLimits().charLimit && (
+                      <span className="text-[10px] font-bold text-red-500 flex items-center gap-1 animate-pulse">
+                        <ZapOff className="w-3 h-3" /> Please upgrade for more capacity
+                      </span>
+                    )}
+                  </div>
                   <button
                     onClick={handleSimplify}
                     disabled={!inputText || isSimplifying}
@@ -1256,62 +1408,129 @@ const App: React.FC = () => {
         }
         {
           dashboardView === 'usage' && (
-            <div className="max-w-5xl">
-              <h3 className="text-2xl font-black mb-8">Usage Insights</h3>
-              <div className="grid md:grid-cols-3 gap-6 mb-8">
-                <div className={`p-6 rounded-3xl border-2 ${isDarkMode ? 'bg-slate-900/40 border-slate-800' : 'bg-white border-slate-100'}`}>
-                  <Activity className="w-8 h-8 text-indigo-500 mb-4" />
-                  <p className="text-3xl font-black mb-2">{history.length}</p>
-                  <p className="text-sm opacity-60">Total Simplifications</p>
+            <div className="max-w-6xl space-y-8 animate-in fade-in duration-700">
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                <div>
+                  <h3 className="text-4xl font-black italic tracking-tighter uppercase mb-2">Workspace Insights</h3>
+                  <p className="opacity-40 font-bold uppercase tracking-[0.2em] text-[10px]">Real-time analytics & plan status</p>
                 </div>
-                <div className={`p-6 rounded-3xl border-2 ${isDarkMode ? 'bg-slate-900/40 border-slate-800' : 'bg-white border-slate-100'}`}>
-                  <Zap className="w-8 h-8 text-emerald-500 mb-4" />
-                  <p className="text-3xl font-black mb-2">{userTier}</p>
-                  <p className="text-sm opacity-60">Current Plan</p>
-                </div>
-                <div className={`p-6 rounded-3xl border-2 ${isDarkMode ? 'bg-slate-900/40 border-slate-800' : 'bg-white border-slate-100'}`}>
-                  <Globe className="w-8 h-8 text-fuchsia-500 mb-4" />
-                  <p className="text-3xl font-black mb-2">{targetLanguage}</p>
-                  <p className="text-sm opacity-60">Active Language</p>
-                </div>
-              </div>
-              <div className={`p-8 rounded-3xl border-2 ${isDarkMode ? 'bg-slate-900/40 border-slate-800' : 'bg-white border-slate-100'}`}>
-                <h4 className="text-lg font-black mb-4">Account Info</h4>
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="opacity-60">Email</span>
-                    <span className="font-bold">{userEmail || 'Not set'}</span>
-                  </div>
+                <div className={`px-6 py-3 rounded-2xl border-2 flex items-center gap-3 ${isDarkMode ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400' : 'bg-indigo-50 border-indigo-100 text-indigo-600'}`}>
+                  <ShieldCheck className="w-5 h-5" />
+                  <span className="text-xs font-black uppercase tracking-widest">{userTier} Membership</span>
                 </div>
               </div>
 
-              {userTier === 'Pro' && (
-                <div className={`mt-8 p-10 rounded-[3rem] border-2 bg-gradient-to-br from-indigo-500 via-fuchsia-500 to-cyan-500 border-transparent shadow-2xl relative overflow-hidden group hover:scale-[1.02] transition-all duration-500`}>
-                  <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
-                    <div className="flex items-center gap-6">
-                      <div className="bg-white/20 p-5 rounded-3xl backdrop-blur-md">
-                        <Zap className="w-10 h-10 text-white fill-current animate-pulse" />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {[
+                  { label: 'Cloud Documents', value: history.length, icon: <FileText className="w-5 h-5" />, color: 'indigo' },
+                  { label: 'Words Clarified', value: (history.reduce((acc, item) => acc + item.input.split(' ').length, 0)).toLocaleString(), icon: <Sparkles className="w-5 h-5" />, color: 'emerald' },
+                  { label: 'Daily Energy', value: `${usageCount}/${getTierLimits().dailyCap === Infinity ? '∞' : getTierLimits().dailyCap}`, icon: <Zap className="w-5 h-5" />, color: 'amber' },
+                  { label: 'Capacity', value: `${(getTierLimits().charLimit / 1000).toFixed(1)}k`, icon: <Activity className="w-5 h-5" />, color: 'fuchsia' }
+                ].map((stat, i) => (
+                  <div key={i} className={`p-8 rounded-[2.5rem] border-2 flex flex-col justify-between group hover:scale-[1.02] transition-all duration-500 ${isDarkMode ? 'bg-slate-900/40 border-slate-800/50 hover:border-indigo-500/30' : 'bg-white border-slate-100 shadow-sm'}`}>
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 ${isDarkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
+                      {React.cloneElement(stat.icon as React.ReactElement, { className: `w-6 h-6 text-${stat.color}-500` })}
+                    </div>
+                    <div>
+                      <p className="text-3xl font-black tracking-tighter mb-1">{stat.value}</p>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40">{stat.label}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid lg:grid-cols-3 gap-8">
+                <div className={`lg:col-span-2 p-10 rounded-[3rem] border-2 flex flex-col ${isDarkMode ? 'bg-slate-900/40 border-slate-800/50' : 'bg-white border-slate-100 shadow-sm'}`}>
+                  <h4 className="text-xl font-black uppercase tracking-tight mb-8">Plan Utilization</h4>
+                  <div className="space-y-8">
+                    <div>
+                      <div className="flex justify-between items-end mb-3">
+                        <span className="text-sm font-bold opacity-60">Character Limit Usage</span>
+                        <span className="text-xs font-black italic">{((inputText.length / getTierLimits().charLimit) * 100).toFixed(1)}%</span>
                       </div>
-                      <div className="text-white">
-                        <h4 className="text-3xl font-[900] tracking-tighter mb-2 italic">Scale Your Clarity.</h4>
-                        <p className="font-bold opacity-90 text-lg uppercase tracking-widest text-sm">Unlock Enterprise Chat, OCR, and Team Collaboration.</p>
+                      <div className={`h-4 rounded-full overflow-hidden ${isDarkMode ? 'bg-white/5' : 'bg-slate-100'}`}>
+                        <div
+                          className="h-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 transition-all duration-1000"
+                          style={{ width: `${Math.min(100, (inputText.length / getTierLimits().charLimit) * 100)}%` }}
+                        ></div>
                       </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        setPendingTier('Enterprise');
-                        handlePurchase('Enterprise');
-                      }}
-                      className="px-10 py-5 bg-white text-indigo-600 rounded-[2rem] font-black text-xl shadow-2xl hover:bg-slate-50 transition-all flex items-center gap-3 active:scale-95"
-                    >
-                      UPGRADE TO ENTERPRISE <ArrowRight className="w-6 h-6" />
-                    </button>
+                    <div>
+                      <div className="flex justify-between items-end mb-3">
+                        <span className="text-sm font-bold opacity-60">Daily Requests Remaining</span>
+                        <span className="text-xs font-black italic">
+                          {getTierLimits().dailyCap === Infinity ? 'Unlimited' : `${getTierLimits().dailyCap - usageCount} Gists Left`}
+                        </span>
+                      </div>
+                      <div className={`h-4 rounded-full overflow-hidden ${isDarkMode ? 'bg-white/5' : 'bg-slate-100'}`}>
+                        <div
+                          className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all duration-1000"
+                          style={{ width: `${getTierLimits().dailyCap === Infinity ? 100 : Math.max(0, (1 - usageCount / getTierLimits().dailyCap) * 100)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-12 pt-12 border-t border-white/5 grid md:grid-cols-2 gap-8">
+                    <div>
+                      <h5 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-40 mb-6">Account Details</h5>
+                      <div className="space-y-4">
+                        <div className="flex justify-between border-b border-white/5 pb-4">
+                          <span className="text-xs font-bold opacity-50 italic">User ID</span>
+                          <span className="text-xs font-mono opacity-80">{userEmail}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-white/5 pb-4">
+                          <span className="text-xs font-bold opacity-50 italic">Joined</span>
+                          <span className="text-xs font-black opacity-80 uppercase tracking-widest">{new Date().getFullYear()}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <h5 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-40 mb-6">Billing & Status</h5>
+                      <div className="space-y-4">
+                        <div className="flex justify-between border-b border-white/5 pb-4">
+                          <span className="text-xs font-bold opacity-50 italic">Method</span>
+                          <span className="text-xs font-black opacity-80 uppercase tracking-widest">Dodo Secure</span>
+                        </div>
+                        <div className="flex justify-between border-b border-white/5 pb-4">
+                          <span className="text-xs font-bold opacity-50 italic">Last Sync</span>
+                          <span className="text-xs font-black opacity-80 uppercase tracking-widest">Just now</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              )}
 
+                <div className={`p-10 rounded-[3rem] border-2 bg-gradient-to-br from-indigo-600/10 to-transparent ${isDarkMode ? 'border-indigo-500/20' : 'bg-indigo-50/50 border-indigo-100'}`}>
+                  <h4 className="text-xl font-black uppercase tracking-tight mb-8">Tier Features</h4>
+                  <div className="space-y-6">
+                    {[
+                      { label: 'Unlimited History', unlocked: true },
+                      { label: 'Direct Dashboard Access', unlocked: true },
+                      { label: 'PDF/DOCX Uploads', unlocked: userTier !== 'Starter' },
+                      { label: 'Deep Dive Chat', unlocked: userTier !== 'Starter' },
+                      { label: 'OCR Image Analysis', unlocked: userTier === 'Enterprise' },
+                      { label: 'Team Portal', unlocked: userTier === 'Enterprise' }
+                    ].map((feat, i) => (
+                      <div key={i} className="flex items-center gap-4">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${feat.unlocked ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-500/10 text-slate-500'}`}>
+                          {feat.unlocked ? <Check className="w-5 h-5" /> : <Lock className="w-4 h-4" />}
+                        </div>
+                        <span className={`text-sm font-bold ${feat.unlocked ? 'opacity-90' : 'opacity-30 line-through'}`}>{feat.label}</span>
+                      </div>
+                    ))}
+                  </div>
 
+                  {userTier !== 'Enterprise' && (
+                    <button
+                      onClick={() => handlePurchase(userTier === 'Starter' ? 'Pro' : 'Enterprise')}
+                      className="w-full mt-10 py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-xl shadow-indigo-600/30"
+                    >
+                      Unlock Everything
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           )
         }
@@ -1476,14 +1695,6 @@ const App: React.FC = () => {
   );
 
   // Dynamic SEO Title based on View
-  const getCharacterLimit = () => {
-    switch (userTier) {
-      case 'Enterprise': return 25000;
-      case 'Pro': return 5000;
-      default: return 800;
-    }
-  };
-
   const getPageTitle = () => {
     switch (view) {
       case 'dashboard': return 'Dashboard | babysimple';
@@ -1503,7 +1714,7 @@ const App: React.FC = () => {
       <button onClick={() => setView('landing')} className="flex items-center gap-2 text-indigo-500 font-black uppercase tracking-widest text-xs mb-12 hover:-translate-x-1 transition-transform">
         <ArrowRight className="w-4 h-4 rotate-180" /> Back to Home
       </button>
-      <h2 className="text-5xl font-black mb-12 tracking-tighter">Latest from <span className="text-indigo-500 italic">babysimple Blog.</span></h2>
+      <h1 className="text-5xl font-black mb-12 tracking-tighter uppercase italic">The babysimple Blog archive.</h1>
       <div className="grid gap-12">
         {BLOG_POSTS.map(post => (
           <div key={post.id} className={`p-10 rounded-[3rem] border-2 transition-all hover:scale-[1.02] cursor-pointer ${isDarkMode ? 'bg-slate-900/40 border-slate-800 hover:border-indigo-500/50' : 'bg-white border-slate-100 shadow-sm hover:border-indigo-200'}`} onClick={() => { setSelectedBlogPostId(post.id); setView('blog-post'); window.history.pushState({}, '', `/blog/${post.slug}`); window.scrollTo(0, 0); }}>
@@ -1521,27 +1732,448 @@ const App: React.FC = () => {
     const post = BLOG_POSTS.find(p => p.id === selectedBlogPostId);
     if (!post) return <div className="py-32 text-center font-black">Post not found.</div>;
 
+    const renderBlogContent = (content: string) => {
+      const lines = content.split('\n');
+      const elements: React.ReactNode[] = [];
+      let currentTable: string[][] = [];
+
+      lines.forEach((line, i) => {
+        // Handle Images
+        const imgMatch = line.match(/!\[(.*?)\]\((.*?)\)/);
+        if (imgMatch) {
+          elements.push(
+            <div key={`img-${i}`} className="my-12 group">
+              <img src={imgMatch[2]} alt={imgMatch[1]} className="rounded-[2.5rem] w-full shadow-2xl transition-transform duration-700 group-hover:scale-[1.02]" />
+              <p className="text-center text-xs font-black uppercase tracking-widest opacity-40 mt-6">{imgMatch[1]}</p>
+            </div>
+          );
+          return;
+        }
+
+        // Handle Tables
+        if (line.startsWith('|')) {
+          const cells = line.split('|').map(c => c.trim()).filter(c => c !== '');
+          if (line.includes('---')) return; // Skip separator line
+          currentTable.push(cells);
+
+          // If next line is not a table line, render the gathered table
+          const nextLine = lines[i + 1];
+          if (!nextLine || !nextLine.startsWith('|')) {
+            elements.push(
+              <div key={`table-${i}`} className="my-10 overflow-x-auto">
+                <table className={`w-full border-collapse rounded-3xl overflow-hidden border-2 ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+                  <thead>
+                    <tr className={isDarkMode ? 'bg-indigo-500/10' : 'bg-slate-50'}>
+                      {currentTable[0].map((cell, j) => (
+                        <th key={j} className="p-6 text-left text-xs font-black uppercase tracking-widest text-indigo-500 border-r border-slate-800 last:border-0">{cell}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {currentTable.slice(1).map((row, ri) => (
+                      <tr key={ri} className={`border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+                        {row.map((cell, ci) => (
+                          <td key={ci} className="p-6 text-sm font-bold opacity-80 border-r border-slate-800 last:border-0">{cell}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+            currentTable = [];
+          }
+          return;
+        }
+
+        // Handle Headers
+        if (line.startsWith('## ')) {
+          elements.push(<h2 key={i} className="text-3xl font-black mt-16 mb-8 tracking-tighter uppercase">{line.replace('## ', '')}</h2>);
+          return;
+        }
+        if (line.startsWith('### ')) {
+          elements.push(<h3 key={i} className="text-2xl font-black mt-12 mb-6 tracking-tight uppercase">{line.replace('### ', '')}</h3>);
+          return;
+        }
+
+        // Handle Contrast Card (Buffett vs Academic)
+        if (line.startsWith('!!! contrast')) {
+          const content = line.replace('!!! contrast ', '');
+          const [left, right] = content.split(' | ');
+          elements.push(
+            <div key={i} className="my-16 flex flex-col md:flex-row gap-8">
+              <div className={`flex-1 p-10 rounded-[3rem] border-2 transition-all hover:scale-[1.02] ${isDarkMode ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-emerald-50 border-emerald-100 shadow-xl shadow-emerald-500/5'}`}>
+                <p className="text-xs font-black uppercase tracking-[0.4em] text-emerald-500 mb-6">The Clear Model</p>
+                <h4 className="text-3xl font-black mb-4 tracking-tighter">{left}</h4>
+                <div className="w-8 h-1 bg-emerald-500/30 rounded-full"></div>
+              </div>
+              <div className={`flex-1 p-10 rounded-[3rem] border-2 transition-all hover:scale-[1.02] ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
+                <p className="text-xs font-black uppercase tracking-[0.4em] opacity-40 mb-6">The Complex Model</p>
+                <h4 className="text-3xl font-black mb-4 tracking-tighter opacity-70">{right}</h4>
+                <div className="w-8 h-1 bg-slate-500/30 rounded-full"></div>
+              </div>
+            </div>
+          );
+          return;
+        }
+
+        // Handle Paradox Callout
+        if (line.startsWith('!!! paradox')) {
+          elements.push(
+            <div key={i} className={`p-10 my-12 rounded-[3.5rem] bg-indigo-500 text-white relative overflow-hidden group shadow-2xl shadow-indigo-500/30`}>
+              <div className="absolute -right-10 -bottom-10 text-[15rem] font-black opacity-10 group-hover:rotate-12 transition-transform duration-1000">?</div>
+              <div className="relative z-10">
+                <p className="text-xs font-black uppercase tracking-[0.6em] text-indigo-200 mb-6">The Intelligence Paradox</p>
+                <p className="text-3xl font-black leading-tight tracking-tight mb-4">
+                  {line.replace('!!! paradox ', '')}
+                </p>
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
+                    <Check className="w-3 h-3" />
+                  </div>
+                  <span className="text-sm font-bold text-indigo-100 italic">Mastered Simplicity = Perceived Genius</span>
+                </div>
+              </div>
+            </div>
+          );
+          return;
+        }
+
+        // Handle Jargon Jar Challenge
+        if (line.startsWith('!!! jar')) {
+          elements.push(
+            <div key={i} className={`my-16 p-12 rounded-[4rem] border-4 border-dashed relative overflow-hidden group transition-all duration-700 hover:scale-[1.02] ${isDarkMode ? 'bg-amber-500/5 border-amber-500/20' : 'bg-amber-50 border-amber-200'}`}>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-5 text-[15rem] pointer-events-none group-hover:rotate-12 transition-transform duration-1000">🫙</div>
+              <div className="relative z-10 text-center">
+                <p className="text-xs font-black uppercase tracking-[0.6em] text-amber-600 mb-6">Interactive Challenge</p>
+                <h4 className="text-4xl font-black mb-6 tracking-tighter">The Jargon Jar</h4>
+                <p className="text-xl font-medium opacity-80 max-w-2xl mx-auto mb-10">
+                  {line.replace('!!! jar ', '')}
+                </p>
+                <div className="flex justify-center gap-4">
+                  {[1, 5, 10].map(val => (
+                    <div key={val} className="w-16 h-16 rounded-full bg-amber-500 text-white flex items-center justify-center font-black text-xl shadow-lg shadow-amber-500/40 hover:animate-bounce cursor-pointer">
+                      ${val}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+          return;
+        }
+
+        // Handle Blockquotes (Quote Cards)
+        if (line.startsWith('> ')) {
+          const isManifesto = line.includes('manifesto') || line.includes('Manifesto');
+          elements.push(
+            <div key={i} className={`p-10 my-12 rounded-[3rem] border-2 relative overflow-hidden group transition-all duration-500 hover:scale-[1.01] ${isManifesto ? 'bg-indigo-600 border-indigo-500 text-white' : (isDarkMode ? 'bg-indigo-500/5 border-indigo-500/20' : 'bg-slate-50 border-slate-100')}`}>
+              <div className={`absolute top-0 left-0 w-2 h-full ${isManifesto ? 'bg-white/30' : 'bg-indigo-500'}`}></div>
+              <span className={`text-6xl font-black absolute -top-4 -left-2 opacity-5 pointer-events-none ${isManifesto ? 'text-white' : ''}`}>“</span>
+              <p className={`text-2xl font-black leading-relaxed tracking-tight italic relative z-10 ${isManifesto ? 'text-white' : ''}`}>
+                {line.replace('> ', '').replace(/\"/g, '')}
+              </p>
+              <div className="mt-6 flex items-center gap-3">
+                <div className={`w-8 h-1 opacity-30 ${isManifesto ? 'bg-white' : 'bg-indigo-500'}`}></div>
+                <span className={`text-xs font-black uppercase tracking-widest ${isManifesto ? 'text-indigo-200' : 'text-indigo-500'}`}>
+                  {isManifesto ? 'The BabySimple Manifesto' : 'The Clarity Rule'}
+                </span>
+              </div>
+            </div>
+          );
+          return;
+        }
+
+        // Handle Lists & Checklists
+        if (line.startsWith('- ')) {
+          const isCheck = line.includes('✅');
+          const isCross = line.includes('❌');
+
+          if (isCheck || isCross) {
+            elements.push(
+              <div key={i} className={`flex items-center gap-4 p-5 rounded-2xl mb-4 border-2 transition-all hover:translate-x-2 ${isCheck ? (isDarkMode ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' : 'bg-emerald-50 border-emerald-100 text-emerald-600') : (isDarkMode ? 'bg-red-500/5 border-red-500/20 text-red-400' : 'bg-red-50 border-red-100 text-red-600')}`}>
+                <span className="text-xl">{isCheck ? '✅' : '❌'}</span>
+                <p className="text-lg font-black uppercase tracking-tight">{line.replace('- ✅ ', '').replace('- ❌ ', '')}</p>
+              </div>
+            );
+          } else {
+            elements.push(
+              <div key={i} className="flex gap-4 mb-4 pl-4">
+                <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-2.5 shrink-0"></div>
+                <p className="text-lg font-medium leading-relaxed opacity-80">{line.replace('- ', '')}</p>
+              </div>
+            );
+          }
+          return;
+        }
+
+        // Handle Stoplight Card (Success - Green)
+        if (line.startsWith('!!! do')) {
+          elements.push(
+            <div key={i} className={`p-8 my-8 rounded-3xl border-2 flex items-start gap-6 transition-all hover:scale-[1.01] ${isDarkMode ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-emerald-50 border-emerald-100'}`}>
+              <div className="bg-emerald-500 p-2 rounded-lg shrink-0 mt-1">
+                <Check className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.3em] text-emerald-500 mb-2">Things you should do</p>
+                <p className={`text-xl font-bold ${isDarkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>{line.replace('!!! do ', '')}</p>
+              </div>
+            </div>
+          );
+          return;
+        }
+
+        // Handle Stoplight Card (Warning - Yellow)
+        if (line.startsWith('!!! warn')) {
+          elements.push(
+            <div key={i} className={`p-8 my-8 rounded-3xl border-2 flex items-start gap-6 transition-all hover:scale-[1.01] ${isDarkMode ? 'bg-amber-500/5 border-amber-500/20' : 'bg-amber-50 border-amber-100'}`}>
+              <div className="bg-amber-500 p-2 rounded-lg shrink-0 mt-1">
+                <AlertCircle className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.3em] text-amber-500 mb-2">Warning Signs</p>
+                <p className={`text-xl font-bold ${isDarkMode ? 'text-amber-400' : 'text-amber-700'}`}>{line.replace('!!! warn ', '')}</p>
+              </div>
+            </div>
+          );
+          return;
+        }
+
+        // Handle Stoplight Card (Danger - Red)
+        if (line.startsWith('!!! call')) {
+          elements.push(
+            <div key={i} className={`p-8 my-8 rounded-[2.5rem] border-2 bg-red-500 text-white flex items-start gap-6 shadow-xl shadow-red-500/20 hover:scale-[1.02] transition-all`}>
+              <div className="bg-white/20 p-3 rounded-2xl shrink-0">
+                <PhoneCall className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.4em] text-white/70 mb-2">When to call 911</p>
+                <p className="text-2xl font-black tracking-tight">{line.replace('!!! call ', '')}</p>
+              </div>
+            </div>
+          );
+          return;
+        }
+
+        // Handle Metric Card (High-Impact Stats)
+        if (line.startsWith('!!! metric')) {
+          elements.push(
+            <div key={i} className="my-10 p-10 rounded-[3rem] bg-indigo-600 text-white text-center transform hover:scale-[1.02] transition-all shadow-2xl shadow-indigo-500/20">
+              <p className="text-xs font-black uppercase tracking-[0.5em] text-indigo-200 mb-4">Business Impact</p>
+              <h4 className="text-5xl font-black mb-4 tracking-tighter uppercase">{line.replace('!!! metric ', '')}</h4>
+              <div className="w-12 h-1 bg-white/30 mx-auto rounded-full"></div>
+            </div>
+          );
+          return;
+        }
+
+        // Handle Risk Level Cards
+        if (line.startsWith('🟢')) {
+          elements.push(
+            <div key={i} className={`p-6 my-4 rounded-2xl border-2 flex items-center gap-4 transition-all hover:scale-[1.01] ${isDarkMode ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-emerald-50 border-emerald-100'}`}>
+              <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-emerald-500/20">
+                <Check className="w-5 h-5" />
+              </div>
+              <p className={`text-lg font-black tracking-tight ${isDarkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>{line.replace('🟢 ', '')}</p>
+            </div>
+          );
+          return;
+        }
+        if (line.startsWith('🟡')) {
+          elements.push(
+            <div key={i} className={`p-6 my-4 rounded-2xl border-2 flex items-center gap-4 transition-all hover:scale-[1.01] ${isDarkMode ? 'bg-amber-500/5 border-amber-500/20' : 'bg-amber-50 border-amber-100'}`}>
+              <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-amber-500/20">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <p className={`text-lg font-black tracking-tight ${isDarkMode ? 'text-amber-400' : 'text-amber-700'}`}>{line.replace('🟡 ', '')}</p>
+            </div>
+          );
+          return;
+        }
+        if (line.startsWith('🔴')) {
+          elements.push(
+            <div key={i} className={`p-6 my-4 rounded-2xl border-2 flex items-center gap-4 transition-all hover:scale-[1.01] ${isDarkMode ? 'bg-red-500/5 border-red-500/20' : 'bg-red-50 border-red-100'}`}>
+              <div className="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-red-500/20">
+                <Zap className="w-5 h-5" />
+              </div>
+              <p className={`text-lg font-black tracking-tight ${isDarkMode ? 'text-red-400' : 'text-red-700'}`}>{line.replace('🔴 ', '')}</p>
+            </div>
+          );
+          return;
+        }
+
+        // Handle Conversation Checklist
+        if (line.startsWith('[ ]')) {
+          elements.push(
+            <div key={i} className={`flex items-center gap-4 p-5 rounded-2xl mb-4 border-2 group transition-all hover:border-indigo-500/50 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+              <div className="w-6 h-6 rounded-lg border-2 border-indigo-500 flex-shrink-0 group-hover:bg-indigo-500 transition-colors"></div>
+              <p className="text-lg font-bold tracking-tight opacity-90">{line.replace('[ ] ', '')}</p>
+            </div>
+          );
+          return;
+        }
+
+        // Handle Jargon Quiz
+        if (line.startsWith('[QUIZ:')) {
+          const match = line.match(/\[QUIZ:\s*(.*?)\]\s*(.*)/);
+          if (match) {
+            elements.push(
+              <div key={i} className={`p-10 my-10 rounded-[3rem] border-2 text-center group cursor-help transition-all duration-700 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 hover:border-indigo-500'}`}>
+                <p className="text-xs font-black uppercase tracking-[0.5em] text-indigo-500 mb-6">Medical Jargon Quiz</p>
+                <h4 className="text-4xl font-black mb-8 tracking-tighter uppercase">{match[1]}</h4>
+                <div className="relative overflow-hidden inline-block px-10 py-6 rounded-2xl bg-indigo-500 text-white font-black text-xl transition-all group-hover:bg-indigo-600">
+                  <span className="group-hover:opacity-0 transition-opacity">Guess the Meaning</span>
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity translate-y-4 group-hover:translate-y-0 duration-500">
+                    {match[2]}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          return;
+        }
+
+        // Handle Legalese Decoder Blocks
+        if (line.startsWith('[LEGALESE DETECTED]')) {
+          elements.push(
+            <div key={`legalese-${i}`} className={`mt-10 p-6 rounded-t-3xl border-2 border-b-0 font-mono text-sm ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+              <div className="flex items-center gap-2 mb-3">
+                <ShieldCheck className="w-4 h-4 text-red-500" />
+                <span className="uppercase tracking-[0.2em] font-black text-[10px] text-red-500">Legalese Detected</span>
+              </div>
+              {lines[i + 1]?.replace(/\"/g, '')}
+            </div>
+          );
+          return;
+        }
+        if (line.startsWith('[BABYSIMPLE DECODED]')) {
+          elements.push(
+            <div key={`decoded-${i}`} className={`p-8 rounded-b-3xl border-2 mb-10 transition-all hover:border-indigo-500/50 ${isDarkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50 border-indigo-100'}`}>
+              <div className="flex items-center gap-2 mb-4">
+                <Sparkles className="w-5 h-5 text-indigo-500" />
+                <span className="uppercase tracking-[0.3em] font-black text-xs text-indigo-500">BabySimple Decoded</span>
+              </div>
+              <p className="text-xl font-black tracking-tight">{lines[i + 1]?.replace(/\"/g, '')}</p>
+            </div>
+          );
+          return;
+        }
+        // Skip the content lines processed by the decoder above
+        if (i > 0 && (lines[i - 1].startsWith('[LEGALESE DETECTED]') || lines[i - 1].startsWith('[BABYSIMPLE DECODED]'))) {
+          return;
+        }
+
+        // Handle Red Flags
+        if (line.startsWith('🚩')) {
+          elements.push(
+            <div key={i} className={`flex items-start gap-6 p-6 rounded-[2rem] border-2 mb-6 group transition-all duration-500 hover:translate-x-3 ${isDarkMode ? 'bg-red-500/5 border-red-500/10 hover:border-red-500/30' : 'bg-red-50 border-red-100 hover:border-red-200'}`}>
+              <span className="text-4xl group-hover:scale-125 transition-transform duration-500">🚩</span>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.4em] text-red-500 mb-1">Red Flag Trap</p>
+                <p className="text-lg font-black tracking-tight">{line.replace('🚩 ', '')}</p>
+              </div>
+            </div>
+          );
+          return;
+        }
+
+        // Handle FAQ Q&A
+        if (line.startsWith('**Q:')) {
+          elements.push(
+            <div key={`q-${i}`} className={`mt-10 p-6 rounded-2xl border-2 ${isDarkMode ? 'bg-indigo-500/5 border-indigo-500/20' : 'bg-slate-50 border-slate-200'}`}>
+              <p className="text-lg font-black text-indigo-500 uppercase tracking-tighter mb-2">Question:</p>
+              <p className="text-xl font-black mb-4 tracking-tight">{line.replace('**Q: ', '').replace('**', '')}</p>
+            </div>
+          );
+          return;
+        }
+        if (line.startsWith('A: ')) {
+          elements.push(
+            <div key={`a-${i}`} className={`p-6 pt-0 rounded-b-2xl border-2 border-t-0 -mt-2 mb-6 ${isDarkMode ? 'bg-indigo-500/5 border-indigo-500/20' : 'bg-slate-50 border-slate-200'}`}>
+              <p className="text-lg font-black text-emerald-500 uppercase tracking-tighter mb-2">Answer:</p>
+              <p className="text-lg font-medium leading-relaxed opacity-80">{line.replace('A: ', '')}</p>
+            </div>
+          );
+          return;
+        }
+
+        // Handle Strong Text (Bold)
+        if (line.includes('**')) {
+          // Basic regex replacement for bold inline
+          const parts = line.split('**');
+          const nodes = parts.map((part, pi) => {
+            if (pi % 2 === 1) return <strong key={pi} className="text-indigo-500 font-black">{part}</strong>;
+            return part;
+          });
+          elements.push(<p key={i} className="text-xl font-medium leading-[1.8] opacity-80 mb-8">{nodes}</p>);
+          return;
+        }
+
+        // Handle Horizontal Rules
+        if (line.trim() === '---') {
+          elements.push(<hr key={i} className={`my-16 border-t-2 ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`} />);
+          return;
+        }
+
+        // Default Paragraph
+        if (line.trim()) {
+          elements.push(<p key={i} className="text-xl font-medium leading-[1.8] opacity-80 mb-8">{line}</p>);
+        }
+      });
+
+      return elements;
+    };
+
     return (
-      <div className="max-w-3xl mx-auto px-6 py-32">
+      <div className="max-w-4xl mx-auto px-6 py-32">
         <button onClick={() => { setView('blog'); window.history.pushState({}, '', '/blog'); }} className="flex items-center gap-2 text-indigo-500 font-black uppercase tracking-widest text-xs mb-12 hover:-translate-x-1 transition-transform">
           <ArrowRight className="w-4 h-4 rotate-180" /> Back to Blog
         </button>
-        <span className="text-xs font-black uppercase tracking-[0.3em] text-indigo-500 mb-4 block">{post.date}</span>
-        <h1 className="text-5xl font-black mb-12 tracking-tighter leading-tight uppercase italic">{post.title}</h1>
-        <div className={`prose prose-xl ${isDarkMode ? 'prose-invert' : ''} max-w-none`}>
-          <div className={`text-xl font-medium leading-[1.8] opacity-80 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'} whitespace-pre-wrap`}>
-            {post.content.split('\n').map((line, i) => {
-              if (line.startsWith('**Example:**')) return <div key={i} className="my-8 p-8 rounded-3xl bg-indigo-500/10 border-2 border-indigo-500/20 italic">{line}</div>;
-              if (line.startsWith('- **')) return <div key={i} className="ml-4 mb-2 flex gap-3"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-2.5 shrink-0"></div>{line}</div>;
-              if (line.match(/^\d\./)) return <div key={i} className="mb-4 pl-4 border-l-2 border-indigo-500/30">{line}</div>;
-              return <p key={i} className="mb-6">{line}</p>;
-            })}
+        <div className="mb-12">
+          <span className="text-xs font-black uppercase tracking-[0.4em] text-indigo-500 mb-4 block group-hover:tracking-[0.5em] transition-all duration-500">{post.date}</span>
+          <h1 className="text-4xl md:text-5xl font-black mb-8 tracking-tighter leading-[1.1] uppercase bg-gradient-to-r from-indigo-500 to-fuchsia-500 bg-clip-text text-transparent">{post.title}</h1>
+        </div>
+
+        <div className={`prose-container ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+          {renderBlogContent(post.content)}
+        </div>
+
+        {/* Comparison Hub */}
+        <div className={`mt-24 p-12 rounded-[3.5rem] border-2 transition-all duration-500 hover:scale-[1.01] ${isDarkMode ? 'bg-slate-900/50 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
+          <h3 className="text-2xl font-black mb-8 uppercase tracking-tighter text-indigo-500">The Comparison Hub</h3>
+          <p className="text-lg font-bold mb-8 opacity-80 uppercase tracking-tight">Want to see how BabySimple stacks up against others?</p>
+
+          <div className="grid gap-6">
+            {[
+              { title: 'BabySimple vs ChatGPT', slug: 'babysimple-vs-chatgpt' },
+              { title: 'BabySimple vs Hemingway', slug: 'babysimple-vs-hemingway' },
+              { title: 'BabySimple vs Claude', slug: 'babysimple-vs-claude' }
+            ].map((hubLink, hi) => (
+              hubLink.slug !== post.slug && (
+                <button
+                  key={hi}
+                  onClick={() => {
+                    const linkedPost = BLOG_POSTS.find(p => p.slug === hubLink.slug);
+                    if (linkedPost) {
+                      setSelectedBlogPostId(linkedPost.id);
+                      window.scrollTo(0, 0);
+                      window.history.pushState({}, '', `/blog/${hubLink.slug}`);
+                    }
+                  }}
+                  className={`group flex items-center justify-between p-6 rounded-3xl border-2 transition-all ${isDarkMode ? 'bg-slate-950 border-slate-800 hover:border-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-500'}`}
+                >
+                  <span className="text-lg font-black tracking-tight uppercase group-hover:text-indigo-500 transition-colors">{hubLink.title}</span>
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-2 transition-transform text-indigo-500" />
+                </button>
+              )
+            ))}
           </div>
         </div>
-        <div className="mt-20 p-12 rounded-[3.5rem] bg-gradient-to-br from-indigo-600 to-fuchsia-600 text-white text-center">
-          <h3 className="text-3xl font-black mb-6 uppercase tracking-tighter italic">Found this helpful?</h3>
+
+        <div className="mt-12 p-12 rounded-[3.5rem] bg-gradient-to-br from-indigo-600 to-fuchsia-600 text-white text-center">
+          <h3 className="text-3xl font-black mb-6 uppercase tracking-tighter">Found this helpful?</h3>
           <p className="text-lg font-bold opacity-90 mb-10 uppercase tracking-tight">Simplify your own complex documents in seconds with babysimple.</p>
-          <button onClick={() => { setView('landing'); setTimeout(() => { document.getElementById('simulator')?.scrollIntoView({ behavior: 'smooth' }); }, 100); }} className="bg-white text-indigo-600 px-10 py-5 rounded-[2rem] font-black text-xl hover:scale-105 transition-all shadow-2xl">Start Gistifying Now</button>
+          <button onClick={() => { setView('landing'); setTimeout(() => { document.getElementById('simulator')?.scrollIntoView({ behavior: 'smooth' }); }, 100); }} className="bg-white text-indigo-600 px-10 py-5 rounded-[2rem] font-black text-xl hover:scale-105 transition-all shadow-2xl">Start Now</button>
         </div>
       </div>
     );
@@ -1598,33 +2230,19 @@ const App: React.FC = () => {
                       <div className="hidden md:flex items-center space-x-6">
                         {isAuthenticated ? (
                           <button
-                            onClick={() => {
-                              if (pendingTier !== 'Starter' && userTier === 'Starter' && userEmail) {
-                                // User is in the middle of a purchase
-                                handlePurchase(pendingTier as any);
-                              } else if (pendingTier !== 'Starter' && userTier === 'Starter' && !userEmail) {
-                                // Fallback: If we somehow don't have an email but they are in a purchase flow
-                                setAuthMode('signup');
-                                setShowAuthModal(true);
-                              } else {
-                                setView('dashboard');
-                              }
-                            }}
+                            onClick={() => setView('dashboard')}
                             className={`flex items-center gap-2.5 px-6 py-2 rounded-2xl font-black uppercase tracking-tighter transition-all group ${isDarkMode ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-600 hover:text-white' : 'bg-indigo-600 text-white shadow-xl shadow-indigo-600/20 hover:scale-105'}`}
                           >
-                            <span className="text-[10px]">{pendingTier !== 'Starter' && userTier === 'Starter' ? 'Pay to Unlock' : 'Workspace'}</span>
-                            <Zap className={`w-4 h-4 ${pendingTier !== 'Starter' && userTier === 'Starter' ? 'animate-pulse text-yellow-500' : 'hidden'}`} />
+                            <span className="text-[10px]">Workspace</span>
                             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                           </button>
                         ) : (
-                          <div className="flex items-center gap-4">
-                            <button
-                              onClick={() => { setAuthMode('login'); setShowAuthModal(true); setPendingTier('Starter'); }}
-                              className="text-sm font-black uppercase tracking-widest hover:text-indigo-500 transition-colors"
-                            >
-                              Login
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => { setAuthMode('login'); setShowAuthModal(true); setPendingTier('Starter'); }}
+                            className="bg-indigo-600 text-white px-8 py-2.5 rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-lg shadow-indigo-600/20"
+                          >
+                            Login
+                          </button>
                         )}
 
                         <button onClick={toggleTheme} className={`p-2.5 rounded-xl transition-all ${isDarkMode ? 'bg-slate-900 text-yellow-500 hover:bg-slate-800' : 'bg-white shadow-sm border text-slate-600 hover:bg-slate-50'}`}>
@@ -1653,24 +2271,18 @@ const App: React.FC = () => {
                           ))}
                           {isAuthenticated ? (
                             <button
-                              onClick={() => {
-                                if (pendingTier !== 'Starter' && userTier === 'Starter') {
-                                  handlePurchase(pendingTier as any);
-                                } else {
-                                  setView('dashboard');
-                                }
-                                setIsMenuOpen(false);
-                              }}
-                              className="bg-indigo-600 text-white w-full py-4 rounded-2xl text-center shadow-indigo-600/20 shadow-xl font-black uppercase tracking-widest flex items-center justify-center gap-3"
+                              onClick={() => { setView('dashboard'); setIsMenuOpen(false); }}
+                              className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-center"
                             >
-                              <span>{pendingTier !== 'Starter' && userTier === 'Starter' ? 'Pay to Unlock' : 'Workspace'}</span>
-                              <Zap className={`w-4 h-4 ${pendingTier !== 'Starter' && userTier === 'Starter' ? 'animate-pulse text-yellow-500' : 'hidden'}`} />
+                              Workspace
                             </button>
                           ) : (
-                            <>
-                              <button onClick={() => { setAuthMode('login'); setShowAuthModal(true); setIsMenuOpen(false); }} className="text-left py-2">Login</button>
-                              <a href="#pricing" onClick={() => setIsMenuOpen(false)} className="bg-indigo-600 text-white w-full py-4 rounded-2xl text-center shadow-indigo-600/20 shadow-xl">Try Pro</a>
-                            </>
+                            <button
+                              onClick={() => { setAuthMode('login'); setShowAuthModal(true); setIsMenuOpen(false); }}
+                              className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-center"
+                            >
+                              Login
+                            </button>
                           )}
                         </div>
                       </div>
@@ -1682,7 +2294,7 @@ const App: React.FC = () => {
                       <div className={`inline-flex items-center gap-2 px-5 py-2 rounded-full text-[10px] font-black mb-10 border transition-all hover:scale-105 ${isDarkMode ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400' : 'bg-indigo-50 border-indigo-100 text-indigo-600'}`}>
                         <span className="uppercase tracking-[0.3em]">Precision-Engineered Clarity</span>
                       </div>
-                      <h1 className="text-6xl md:text-8xl font-[900] tracking-tighter mb-8 leading-[0.95]">
+                      <h1 className="text-5xl md:text-7xl font-[900] tracking-tighter mb-8 leading-[0.95]">
                         Everything is <br className="hidden md:block" />
                         <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 via-fuchsia-500 to-cyan-400">clearer with babysimple.</span>
                       </h1>
@@ -1692,7 +2304,7 @@ const App: React.FC = () => {
                       </p>
                       <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
                         <a href="#simulator" className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-10 py-5 rounded-[2rem] text-xl font-black shadow-2xl shadow-indigo-500/30 transition-all hover:scale-110 active:scale-95 flex items-center justify-center gap-3">
-                          Start Gistifying <ArrowRight className="w-6 h-6" />
+                          Start Now <ArrowRight className="w-6 h-6" />
                         </a>
                         <a href="#simulator" className={`w-full sm:w-auto px-10 py-5 rounded-[2rem] text-xl font-black transition-all hover:scale-110 active:scale-95 border-2 ${isDarkMode ? 'bg-white/5 border-white/10 hover:bg-white/10 text-white' : 'bg-white border-slate-200 text-slate-800'} flex items-center justify-center`}>
                           Watch Demo
@@ -1767,7 +2379,7 @@ const App: React.FC = () => {
                   <section id="simulator" className="py-24 px-6 relative">
                     <div className="max-w-7xl mx-auto">
                       <div className="text-center mb-16">
-                        <h2 className="text-4xl md:text-6xl font-black mb-6 tracking-tight">One Tool, <span className="text-indigo-500 italic">Unlimited</span> Contexts</h2>
+                        <h2 className="text-4xl md:text-6xl font-black mb-6 tracking-tight">One Tool, <span className="text-indigo-500">Unlimited</span> Contexts</h2>
                         <p className={`text-lg max-w-2xl mx-auto opacity-60 font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                           From medical reports to technical docs, we've got you covered.
                         </p>
@@ -1802,7 +2414,9 @@ const App: React.FC = () => {
                               className={`w-full h-80 p-8 rounded-[3rem] border-2 bg-transparent resize-none focus:outline-none transition-all duration-500 text-xl leading-relaxed ${isDarkMode ? 'border-slate-800 text-slate-300 focus:border-indigo-500/50' : 'border-slate-100 bg-white text-slate-800 focus:border-indigo-200 shadow-inner'}`}
                             ></textarea>
                             <div className="mt-2 text-right">
-                              <span className={`text-xs font-black uppercase tracking-widest ${inputText.length >= (userTier === 'Enterprise' ? 25000 : userTier === 'Pro' ? 5000 : 800) ? 'text-red-500' : 'text-slate-500 opacity-50'}`}>{inputText.length} / {userTier === 'Enterprise' ? '25,000' : userTier === 'Pro' ? '5,000' : '800'}</span>
+                              <span className={`text-[10px] font-black uppercase tracking-widest ${inputText.length > getTierLimits().charLimit ? 'text-red-500' : 'text-slate-500 opacity-50'}`}>
+                                {inputText.length.toLocaleString()} / {getTierLimits().charLimit.toLocaleString()}
+                              </span>
                             </div>
                             <button onClick={handleSimplify} disabled={!inputText || isSimplifying} className={`mt-8 py-5 rounded-[2.5rem] font-black text-xl flex items-center justify-center gap-3 transition-all ${!inputText || isSimplifying ? 'bg-slate-800 text-slate-500' : 'bg-indigo-600 text-white shadow-2xl shadow-indigo-600/30 hover:bg-indigo-700 hover:-translate-y-1'}`}>
                               {isSimplifying ? <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin"></div> : <Wand2 className="w-6 h-6" />}
@@ -1881,7 +2495,7 @@ const App: React.FC = () => {
                         {FEATURES.map((feature, idx) => (
                           <div key={idx} className={`p-10 rounded-[3rem] border-2 transition-all duration-500 float-on-hover group ${isDarkMode ? 'bg-slate-900/40 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
                             <div className="w-16 h-16 rounded-[1.5rem] bg-indigo-600 text-white flex items-center justify-center mb-8 shadow-xl group-hover:scale-110 transition-transform">{feature.icon}</div>
-                            <h3 className="text-2xl font-black mb-4 tracking-tight group-hover:text-indigo-500 transition-colors uppercase italic">{feature.title}</h3>
+                            <h3 className="text-2xl font-black mb-4 tracking-tight group-hover:text-indigo-500 transition-colors uppercase">{feature.title}</h3>
                             <p className={`leading-relaxed font-bold opacity-50 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{feature.description}</p>
                           </div>
                         ))}
@@ -1891,7 +2505,7 @@ const App: React.FC = () => {
                           <div className="w-16 h-16 rounded-[1.5rem] bg-emerald-500/10 flex items-center justify-center mb-8 group-hover:scale-110 transition-transform">
                             <ShieldCheck className="w-8 h-8 text-emerald-500" />
                           </div>
-                          <h3 className="text-2xl font-black mb-4 tracking-tight group-hover:text-emerald-500 transition-colors uppercase italic">No Data Stored</h3>
+                          <h3 className="text-2xl font-black mb-4 tracking-tight group-hover:text-emerald-500 transition-colors uppercase">No Data Stored</h3>
                           <p className={`leading-relaxed font-bold opacity-50 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Your text is processed instantly and never saved on our servers.</p>
                         </div>
 
@@ -1899,7 +2513,7 @@ const App: React.FC = () => {
                           <div className="w-16 h-16 rounded-[1.5rem] bg-emerald-500/10 flex items-center justify-center mb-8 group-hover:scale-110 transition-transform">
                             <Globe className="w-8 h-8 text-emerald-500" />
                           </div>
-                          <h3 className="text-2xl font-black mb-4 tracking-tight group-hover:text-emerald-500 transition-colors uppercase italic">Encrypted Pipeline</h3>
+                          <h3 className="text-2xl font-black mb-4 tracking-tight group-hover:text-emerald-500 transition-colors uppercase">Encrypted Pipeline</h3>
                           <p className={`leading-relaxed font-bold opacity-50 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>All data transfers use industry-standard HTTPS encryption.</p>
                         </div>
 
@@ -1907,7 +2521,7 @@ const App: React.FC = () => {
                           <div className="w-16 h-16 rounded-[1.5rem] bg-emerald-500/10 flex items-center justify-center mb-8 group-hover:scale-110 transition-transform">
                             <Zap className="w-8 h-8 text-emerald-500" />
                           </div>
-                          <h3 className="text-2xl font-black mb-4 tracking-tight group-hover:text-emerald-500 transition-colors uppercase italic">Real-Time Only</h3>
+                          <h3 className="text-2xl font-black mb-4 tracking-tight group-hover:text-emerald-500 transition-colors uppercase">Real-Time Only</h3>
                           <p className={`leading-relaxed font-bold opacity-50 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Text goes in, simplified text comes out. Nothing in between.</p>
                         </div>
                       </div>
@@ -1917,14 +2531,14 @@ const App: React.FC = () => {
                   <section id="pricing" className="py-32 px-6">
                     <div className="max-w-7xl mx-auto">
                       <div className="text-center mb-24">
-                        <h2 className="text-6xl font-[900] mb-6 tracking-tighter">Fair <span className="text-indigo-600 italic">Plans.</span></h2>
+                        <h2 className="text-6xl font-[900] mb-6 tracking-tighter">Fair <span className="text-indigo-600">Plans.</span></h2>
                         <p className={`text-xl font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Clarity should be accessible to everyone.</p>
                       </div>
                       <div className="grid lg:grid-cols-3 gap-12">
                         {PRICING_TIERS.map((tier, idx) => (
                           <div key={idx} className={`p-12 rounded-[4rem] border-2 flex flex-col transition-all relative ${tier.isPopular ? (isDarkMode ? 'scale-110 z-10 border-indigo-500 bg-indigo-500/5 shadow-2xl shadow-indigo-500/10' : 'scale-110 z-10 border-indigo-500 bg-white shadow-2xl shadow-indigo-500/20') : (isDarkMode ? 'border-slate-800 bg-slate-950/20' : 'border-slate-200 bg-white shadow-sm')}`}>
                             {tier.isPopular && <div className="absolute -top-5 left-1/2 -translate-x-1/2 bg-indigo-500 text-white text-[10px] font-black uppercase tracking-[0.3em] px-8 py-2 rounded-full shadow-xl">Recommended</div>}
-                            <h3 className="text-2xl font-black mb-2 uppercase tracking-tight italic">{tier.name}</h3>
+                            <h3 className="text-2xl font-black mb-2 uppercase tracking-tight">{tier.name}</h3>
                             <div className="flex items-baseline gap-2 mb-6">
                               <span className="text-6xl font-black tracking-tighter">{tier.price}</span>
                               <span className="text-lg opacity-40 font-bold uppercase tracking-widest">/mo</span>
@@ -1951,7 +2565,7 @@ const App: React.FC = () => {
                           <HelpCircle className="w-3 h-3" />
                           <span className="uppercase tracking-[0.2em]">Got Questions?</span>
                         </div>
-                        <h2 className="text-5xl md:text-6xl font-[900] tracking-tighter mb-4">Common <span className="text-indigo-500 italic">Queries.</span></h2>
+                        <h2 className="text-5xl md:text-6xl font-[900] tracking-tighter mb-4">Common <span className="text-indigo-500">Queries.</span></h2>
                       </div>
 
                       <div className="space-y-4">
@@ -2134,7 +2748,7 @@ const App: React.FC = () => {
             <div className={`max-w-md w-full rounded-[4rem] p-12 border-2 text-center relative overflow-hidden shadow-2xl ${isDarkMode ? 'bg-slate-900 border-indigo-500/30' : 'bg-white border-white shadow-2xl'}`}>
               <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 via-fuchsia-500 to-cyan-500"></div>
               <div className="w-20 h-20 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-500 mx-auto mb-8 animate-bounce"><Zap className="w-12 h-12 fill-current" /></div>
-              <h3 className="text-3xl font-black mb-4 uppercase tracking-tighter leading-none italic">Free Plan Limit Over</h3>
+              <h3 className="text-3xl font-black mb-4 uppercase tracking-tighter leading-none">Free Plan Limit Over</h3>
               <p className="opacity-50 mb-10 font-bold uppercase tracking-tight text-sm">You've reached the daily limit for the free plan. Upgrade to babysimple Pro for unlimited gists and faster processing.</p>
               <button onClick={() => { setShowLimitModal(false); setView('landing'); setTimeout(() => { const el = document.getElementById('pricing'); el?.scrollIntoView({ behavior: 'smooth' }); }, 100); }} className="w-full py-6 bg-indigo-600 text-white rounded-[2rem] font-black text-xl hover:scale-105 transition-all shadow-xl shadow-indigo-600/30 uppercase tracking-widest">Upgrade to Pro</button>
               <button onClick={() => setShowLimitModal(false)} className="mt-6 text-[10px] font-black uppercase opacity-30 hover:opacity-100 transition-opacity tracking-[0.3em]">Stay Free</button>
