@@ -6,16 +6,36 @@ export interface BlogPost {
     content: string;
     date: string;
     excerpt: string;
+    image: string;
+    category: string;
+    readingTime: string;
+    author: {
+        name: string;
+        avatar: string;
+        date: string;
+    };
+    tags: string[];
+    isFeatured?: boolean;
     hubLinks?: { title: string; slug: string }[];
 }
 
 export const BLOG_POSTS: BlogPost[] = [
     {
         id: '1',
-        title: 'BabySimple vs Grammarly',
+        title: 'How do creators post so often without writing new content?',
         slug: 'babysimple-vs-grammarly',
-        date: 'January 22, 2026',
-        excerpt: 'Why clarity beats correctness in 2026 content.',
+        date: 'February 14, 2026',
+        excerpt: 'Top creators post daily across platforms —X threads, LinkedIn essays, Instagram carousels, TikTok videos—while you...',
+        image: 'https://images.unsplash.com/photo-1488190211105-8b0e65b80b4e?q=80&w=2070&auto=format&fit=crop',
+        category: 'Content Strategy',
+        readingTime: '8 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mohit',
+            date: 'Feb 14, 2026'
+        },
+        tags: ['Daily Posting', 'Reword', 'Creator Secrets'],
+        isFeatured: true,
         content: `![Grammarly vs BabySimple Hero](/blog/hero.png)
 
 We’ve all been there—reading a blog post that is grammatically flawless but feels like a chore to get through. Grammarly is the giant of spell-checking, but does "correct" English actually help you connect with your audience? In the battle of Polish vs. Clarity, the winner isn't always the one with the best punctuation. Let's find out why.
@@ -73,10 +93,20 @@ A: Absolutely. The pro-blogger strategy is to use Grammarly for the final polish
     },
     {
         id: '2',
-        title: 'BabySimple vs Hemingway',
+        title: 'How do I repurpose content for different platforms?',
         slug: 'babysimple-vs-hemingway',
-        date: 'January 22, 2026',
-        excerpt: 'Beyond shortening sentences: The art of clear thinking.',
+        date: 'February 13, 2026',
+        excerpt: "The #1 creator question: 'How do I actually repurpose content for different platforms?' I asked it too—staring at my...",
+        image: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?q=80&w=2080&auto=format&fit=crop',
+        category: 'Content Strategy',
+        readingTime: '8 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mohit',
+            date: 'Feb 13, 2026'
+        },
+        tags: ['Platform Strategy', 'Reword', 'How-To'],
+        isFeatured: true,
         content: `![Scissors vs Translator](/blog/hemingway_hero.png)
 
 If you’ve ever used the Hemingway Editor, you know the feeling of "The Red Pen." It’s a brilliant tool for cutting the fluff and making your writing bold. But here is the hard truth: **A short sentence can still be confusing.**
@@ -135,10 +165,19 @@ A: Yes! It is specifically designed to help technical writers and marketers expl
     },
     {
         id: '3',
-        title: 'BabySimple vs ChatGPT',
+        title: 'From One Idea to Everywhere: A Simple Content Repurposing...',
         slug: 'babysimple-vs-chatgpt',
-        date: 'January 22, 2026',
-        excerpt: 'Why specialized AI is better than general prompting.',
+        date: 'February 12, 2026',
+        excerpt: "One idea. Every platform. Total coverage. That's the system I built after my 'React vs Node.js for Food Delivery Backend'...",
+        image: 'https://images.unsplash.com/photo-1552664730-d307ca884978?q=80&w=2070&auto=format&fit=crop',
+        category: 'Content Strategy',
+        readingTime: '7 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mohit',
+            date: 'Feb 12, 2026'
+        },
+        tags: ['Omnichannel', 'Reword', 'System'],
         content: `![The Swiss Army Knife vs. The Scalpel](/blog/gpt_hero.png)
 
 "Can't I just ask ChatGPT to explain this?"
@@ -196,10 +235,19 @@ A: Yes! It is specifically designed to help technical writers and marketers expl
     },
     {
         id: '4',
-        title: 'BabySimple vs Claude',
+        title: 'Why your brand needs a content ecosystem in 2026',
         slug: 'babysimple-vs-claude',
-        date: 'January 22, 2026',
-        excerpt: 'How to remove "hallucinated jargon" from AI reports.',
+        date: 'February 11, 2026',
+        excerpt: 'In 2026, information is cheap. Attention is expensive. Learn why a content ecosystem is the only way to stay relevant...',
+        image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=2071&auto=format&fit=crop',
+        category: 'Business Growth',
+        readingTime: '6 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mohit',
+            date: 'Feb 11, 2026'
+        },
+        tags: ['Ecosystem', 'Branding', '2026'],
         content: `![Claude vs BabySimple Filter](/blog/claude_filter.png)
 
 The "Verbose" Professor Claude (by Anthropic) is the king of long-form reports. It has a massive memory. But it has a secret ego—it loves sounding like a PhD student. 
@@ -251,10 +299,19 @@ A: Absolutely. It's perfect for turning dense AI-generated research into executi
     },
     {
         id: '5',
-        title: 'BabySimple vs Quillbot',
+        title: 'The Jargon Tax: How complex language is killing your sales',
         slug: 'babysimple-vs-quillbot',
-        date: 'January 22, 2026',
-        excerpt: 'Simplification vs Paraphrasing: Why synonyms aren\'t enough.',
+        date: 'February 10, 2026',
+        excerpt: "Text spinning vs text solving. Why synonyms aren't enough when you're trying to achieve deep connection with customers.",
+        image: 'https://images.unsplash.com/photo-1454165833767-02750849664b?q=80&w=2070&auto=format&fit=crop',
+        category: 'Sales Strategy',
+        readingTime: '10 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mohit',
+            date: 'Feb 10, 2026'
+        },
+        tags: ['Sales', 'Clarity', 'Psychology'],
         content: `![Spinning vs Solving](/blog/quillbot_hero.png)
 
 ## A Tale of Two Founders (The Sarah Story)
@@ -315,10 +372,19 @@ A: BabySimple. In business, you want your message to be understood instantly. Ex
     },
     {
         id: '6',
-        title: 'Medical Jargon Simplification',
+        title: 'Medical Jargon Simplification: Making patient docs safer',
         slug: 'simplify-medical-jargon',
         date: 'January 22, 2026',
-        excerpt: 'Making patient docs safer with plain English.',
+        excerpt: 'In 2026, research shows that inadequate health literacy increases mortality risks by nearly 8 times. Learn how to translate fear into action.',
+        image: 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?q=80&w=2070&auto=format&fit=crop',
+        category: 'Medical Clarity',
+        readingTime: '9 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
+            date: 'Jan 22, 2026'
+        },
+        tags: ['Healthcare', 'Safety', 'PlainEnglish'],
         content: `![Medical Clarity](/blog/infographic.png)
 
 ## The High Stakes of "Doctor Speak"
@@ -377,10 +443,19 @@ BabySimple isn’t just "dumbing down" medicine; it’s translating fear into ac
     },
     {
         id: '7',
-        title: 'Legal Legalese Translation',
+        title: 'Legal Legalese Translation: Stop signing blind contracts',
         slug: 'legal-jargon-to-plain-english',
         date: 'January 22, 2026',
-        excerpt: 'A small business guide to stop signing "blind" contracts.',
+        excerpt: "Why do lawyers write like they're using a quill and ink? A small business guide to understanding the traps in your contracts.",
+        image: 'https://images.unsplash.com/photo-1505664194779-8beaceb93744?q=80&w=2070&auto=format&fit=crop',
+        category: 'Legal Clarity',
+        readingTime: '11 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=James',
+            date: 'Jan 22, 2026'
+        },
+        tags: ['Legal', 'Contracts', 'Business'],
         content: `## The "Antique" Problem
 "Herein," "Thereafter," "Force Majeure." Why do lawyers write like they’re using a quill and ink?
 
@@ -445,10 +520,19 @@ A: BabySimple specializes in simplifying complex English. Since most internation
     },
     {
         id: '8',
-        title: 'Explaining AI Ethics',
+        title: 'Explaining AI Ethics to Parents: The Generational Gap',
         slug: 'explain-ai-ethics-parents',
         date: 'January 22, 2026',
-        excerpt: 'How to bridge the generational tech gap with simplicity.',
+        excerpt: 'When you mention "AI Ethics" at dinner, your parents might imagine a robot taking over. Here is how to explain the real risks.',
+        image: 'https://images.unsplash.com/photo-1523961131990-5ea7c61b2107?q=80&w=1974&auto=format&fit=crop',
+        category: 'AI Literacy',
+        readingTime: '10 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Emily',
+            date: 'Jan 22, 2026'
+        },
+        tags: ['AI', 'Ethics', 'Family'],
         content: `![AI Ethics](/blog/infographic.png)
 
 ## The "Terminator" vs. The "Banker"
@@ -505,10 +589,19 @@ A: Because these laws protect their bank accounts, their medical privacy, and th
     },
     {
         id: '9',
-        title: 'SaaS Documentation Churn',
+        title: 'SaaS Documentation Churn: Why complex docs lose users',
         slug: 'fix-saas-docs-jargon',
         date: 'January 22, 2026',
-        excerpt: 'Why complex help docs are losing you customers.',
+        excerpt: 'In 2026, 55% of people have cancelled a subscription because they didn’t understand how to use it. Fix your docs, keep your users.',
+        image: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?q=80&w=2072&auto=format&fit=crop',
+        category: 'Product UX',
+        readingTime: '8 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex',
+            date: 'Jan 22, 2026'
+        },
+        tags: ['SaaS', 'Documentation', 'Retention'],
         content: `![SaaS UI](/blog/ui.png)
 
 ## The Developer vs. User Mindset
@@ -567,10 +660,19 @@ A: Every time you ship a new feature. Use BabySimple as part of your CI/CD pipel
     },
     {
         id: '10',
-        title: 'Corporate Buzzwords for 2026',
+        title: 'Corporate Buzzwords for 2026: The Banned List',
         slug: 'corporate-buzzwords-2026',
         date: 'January 25, 2026',
-        excerpt: 'Your guide to the "Buzzword Burnout" and how to speak with radical clarity.',
+        excerpt: 'In 2026, the corporate world is facing a "Buzzword Burnout." Strip away the "Jargon Tax" and speak with radical clarity.',
+        image: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?q=80&w=2070&auto=format&fit=crop',
+        category: 'Office Culture',
+        readingTime: '7 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan',
+            date: 'Jan 25, 2026'
+        },
+        tags: ['Corporate', 'Buzzwords', 'Leadership'],
         content: `![Corporate Buzzword Burnout](/blog/hero.png)
 
 In 2026, the corporate world is facing a **"Buzzword Burnout."** As AI continues to automate routine communication, the use of hollow, complex language is increasingly seen as a sign of inefficiency rather than authority. 
@@ -652,10 +754,19 @@ A: It's a team-building exercise where everyone puts $1 in a jar if they use a b
     },
     {
         id: '11',
-        title: 'Leadership & 5th Grade Writing',
+        title: 'Leadership & 5th Grade Writing: Why simple wins',
         slug: 'leadership-simplicity-guide',
         date: 'January 22, 2026',
-        excerpt: 'Why powerful leaders speak at a 5th-grade level.',
+        excerpt: 'Authors who use simpler language are rated as more intelligent by readers than those who use complex jargon. Learn why.',
+        image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=2071&auto=format&fit=crop',
+        category: 'Leadership',
+        readingTime: '9 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mohit',
+            date: 'Jan 22, 2026'
+        },
+        tags: ['Leadership', 'Writing', 'Influence'],
         content: `![Leadership Simplicity](/blog/hemingway_hero.png)
 
 ## The Myth of the "High-Brow" Intellectual
@@ -704,10 +815,19 @@ Leadership isn't about how much you know; it's about how much your team understa
     },
     {
         id: '12',
-        title: 'Financial Report Simplification',
+        title: 'Financial Report Simplification: Heal the Balance Sheet',
         slug: 'simplify-financial-reports',
         date: 'January 22, 2026',
-        excerpt: 'Making balance sheets understandable for stakeholders.',
+        excerpt: 'Reading a financial report shouldn’t feel like decoding an ancient language. Bridge the gap between CPA and Stakeholder.',
+        image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=2015&auto=format&fit=crop',
+        category: 'FinTech',
+        readingTime: '8 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Robert',
+            date: 'Jan 22, 2026'
+        },
+        tags: ['Finance', 'ROI', 'Transparency'],
         content: `![Finance](/blog/infographic.png)
 
 Reading a financial report shouldn't feel like decoding an ancient language. In 2026, the complexity of balance sheets and P&L statements has become a significant barrier for stakeholders. Investors and board members don't want a 50-page document full of "Accruals" and "Amortization" without context. They want to know one thing: **Is the company healthy?**
@@ -725,10 +845,19 @@ BabySimple acts as the bridge between the CPA and the Stakeholder. By stripping 
     },
     {
         id: '13',
-        title: 'Academic Writing for Humans',
+        title: 'Academic Writing for Humans: Beyond the Ivory Tower',
         slug: 'academic-writing-plain-english',
         date: 'January 25, 2026',
-        excerpt: 'How to turn a dense thesis into a readable blog post.',
+        excerpt: 'In 2026, the ivory tower is finally opening its doors. Academic impact is the new prestige. Turn your thesis into a blog.',
+        image: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?q=80&w=2070&auto=format&fit=crop',
+        category: 'Academy',
+        readingTime: '10 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Linda',
+            date: 'Jan 25, 2026'
+        },
+        tags: ['Research', 'Impact', 'Clarity'],
         content: `![Academic Writing for Humans](/blog/hemingway_hero.png)
 
 In 2026, the ivory tower is finally opening its doors. For decades, academic writing has been synonymous with dense, impenetrable prose, but the **"Readability Revolution"** is changing the rules. At BabySimple, we believe that high-level ideas shouldn't require a decoder ring.
@@ -789,10 +918,19 @@ A: Yes. As Mark Twain once said, *"I would have written a shorter letter, but I 
     },
     {
         id: '14',
-        title: 'E-commerce Product Descriptions',
+        title: 'E-commerce Product Descriptions: Simple Sells More',
         slug: 'simple-product-descriptions',
         date: 'January 25, 2026',
-        excerpt: 'Why simple language sells more than fancy adjectives.',
+        excerpt: 'Shoppers don’t buy what they don’t understand. Learn how to remove the "Cognitive Load Tax" from your checkout flow.',
+        image: 'https://images.unsplash.com/photo-1556742044-3c52d6e88c62?q=80&w=2070&auto=format&fit=crop',
+        category: 'E-commerce',
+        readingTime: '9 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sophia',
+            date: 'Jan 25, 2026'
+        },
+        tags: ['Marketing', 'Product', 'Conversion'],
         content: `![E-commerce Optimization](/blog/ui.png)
 
 In 2026, the digital marketplace is no longer about who has the most features; it is about who can explain them the fastest. As attention spans shrink to a record low, E-commerce Product Descriptions have become the ultimate battlefield for the **"Clarity Rule."**
@@ -857,10 +995,19 @@ A: General AI tends to default to "marketing fluff." Use BabySimple to audit AI-
     },
     {
         id: '15',
-        title: 'AI Safety for Non-Techies',
+        title: 'AI Safety for Non-Techies: A Simple Guide',
         slug: 'ai-safety-simple-guide',
         date: 'January 25, 2026',
-        excerpt: 'Understanding the risks of AI without the PhD terms.',
+        excerpt: 'AI is like a powerful car without a steering wheel. AI Safety is building that wheel. Understand the risks in plain English.',
+        image: 'https://images.unsplash.com/photo-1507146153580-69a1fe6d8aa1?q=80&w=2070&auto=format&fit=crop',
+        category: 'Tech Safety',
+        readingTime: '11 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Emily',
+            date: 'Jan 25, 2026'
+        },
+        tags: ['AI', 'Safety', 'Ethics'],
         hubLinks: [
             { title: 'Explaining AI Ethics', slug: 'explain-ai-ethics-parents' },
             { title: 'The Future of Simple Writing', slug: 'the-future-of-simple-writing-2026' },
@@ -935,10 +1082,19 @@ A: Slightly, but it's a necessary trade-off. We prefer a tool that is 100% safe 
     },
     {
         id: '16',
-        title: 'Policy Manuals for Employees',
+        title: 'Policy Manuals for Employees: The Clarity Bridge',
         slug: 'simple-policy-manuals',
         date: 'January 25, 2026',
-        excerpt: 'Increasing employee compliance with clearer rules.',
+        excerpt: 'In 2026, the traditional 100-page handbook is dead. Transform corporate-speak into trust and compliance.',
+        image: 'https://images.unsplash.com/photo-1521791136064-7986c2923216?q=80&w=2069&auto=format&fit=crop',
+        category: 'HR Strategy',
+        readingTime: '8 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan',
+            date: 'Jan 25, 2026'
+        },
+        tags: ['HR', 'Culture', 'Operations'],
         content: `![Policy Manual Comparison](/blog/infographic.png)
 
 In 2026, the traditional 100-page employee handbook is dead. Modern companies are realizing that if an employee can't understand the rules, they can't follow them. At BabySimple, we believe a policy manual should be a bridge, not a barrier.
@@ -1008,10 +1164,19 @@ A: Absolutely. Remote work relies on trust/clarity. If the rules are hidden in j
     },
     {
         id: '17',
-        title: 'Real Estate Contract Clarity',
+        title: 'Real Estate Contract Clarity: Fine Print Decoded',
         slug: 'real-estate-contract-jargon',
         date: 'January 25, 2026',
-        excerpt: 'Helping home buyers understand the fine print.',
+        excerpt: 'Buying a home in 2026 should be a milestone, not a math exam. Learn how to spot "Ambiguity Traps" in your docs.',
+        image: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=2073&auto=format&fit=crop',
+        category: 'Real Estate',
+        readingTime: '9 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
+            date: 'Jan 25, 2026'
+        },
+        tags: ['RealEstate', 'HomeBuying', 'Contracts'],
         content: `![Real Estate Clarity](/blog/infographic.png)
 
 Buying a home in 2026 should feel like a milestone, not a math exam. Yet, most real estate contracts are still written in "Legal Legalese"—a language designed to protect lawyers rather than inform homeowners.
@@ -1087,10 +1252,19 @@ A: Not exactly. The deposit is the money you provide; Escrow is the neutral "saf
     },
     {
         id: '18',
-        title: 'UX Writing & Microcopy',
+        title: 'UX Writing & Microcopy: Every Word Matters',
         slug: 'ux-writing-clarity-tips',
         date: 'January 25, 2026',
-        excerpt: 'Why buttons and labels need to be 100% simple.',
+        excerpt: 'Difference between a checkout and a bounce is often just two words. Learn why buttons need to be 100% simple.',
+        image: 'https://images.unsplash.com/photo-1531403009184-4c778955cf04?q=80&w=2070&auto=format&fit=crop',
+        category: 'Design Shop',
+        readingTime: '7 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sophia',
+            date: 'Jan 25, 2026'
+        },
+        tags: ['UX', 'Design', 'Microcopy'],
         content: `![UX Writing Before & After](/blog/ux_before_after.png)
 
 In 2026, the difference between a user finishing a checkout or closing a tab is often just two words. As interfaces become more "prompt-driven" and conversational, UX Writing (User Experience Writing) and Microcopy have shifted from being an afterthought to being the core of product design.
@@ -1162,10 +1336,19 @@ A: Yes, in "Success States" (like after a payment is finished). In moments of jo
     },
     {
         id: '19',
-        title: 'Crypto & Web3 for Beginners',
+        title: 'Crypto & Web3 for Beginners: Mystery Solved',
         slug: 'explain-crypto-web3-simply',
         date: 'January 24, 2026',
-        excerpt: 'Taking the mystery out of blockchain and wallets.',
+        excerpt: 'Read/Write/Own. Taking the mystery out of blockchain and wallets for the next billion users.',
+        image: 'https://images.unsplash.com/photo-1639762681485-074b7f938ba0?q=80&w=2232&auto=format&fit=crop',
+        category: 'Web3',
+        readingTime: '9 min read',
+        author: {
+            name: 'Komal Siddharth',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex',
+            date: 'Jan 24, 2026'
+        },
+        tags: ['Crypto', 'Web3', 'Blockchain'],
         content: `![Web3 Evolution](/blog/web3_evolution.png)
 
 ## The Big Picture: What is Web3?
@@ -1242,10 +1425,19 @@ A: In Web3, there is no "Forgot Password" button. Your **Seed Phrase** is your o
     },
     {
         id: '20',
-        title: 'The Future of Simple Writing',
+        title: 'The Future of Simple Writing: Signal vs Noise',
         slug: 'the-future-of-simple-writing-2026',
         date: 'January 24, 2026',
-        excerpt: 'Why selection beats production in the era of infinite noise.',
+        excerpt: 'In 2026, information is infinite. Clarity is the ultimate luxury. Why selection beats production in the era of noise.',
+        image: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=2070&auto=format&fit=crop',
+        category: 'Clarity Rule',
+        readingTime: '12 min read',
+        author: {
+            name: 'Mohit Sharma',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mohit',
+            date: 'Jan 24, 2026'
+        },
+        tags: ['Future', 'Writing', 'Focus'],
         content: `![The Future of Clarity](/blog/future_hero.png)
 
 ## The Era of Infinite Noise: Where Attention Became the New Gold

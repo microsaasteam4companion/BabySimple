@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Sun, Moon, Zap, Menu, X, ArrowRight, Check, Github, Linkedin, Copy, Share2, Sparkles, Layers, Wand2, LayoutDashboard, History, Settings, LogOut, ChevronRight, FileText, Activity, CreditCard, ShieldCheck, Globe, Users, Trash2, Plus, Minus, HelpCircle, Home, ZapOff, AlertCircle, PhoneCall } from 'lucide-react';
+import { Sun, Moon, Zap, Menu, X, ArrowRight, Check, Github, Linkedin, Copy, Share2, Sparkles, Layers, Wand2, LayoutDashboard, History, Settings, LogOut, ChevronRight, FileText, Activity, CreditCard, ShieldCheck, Globe, Users, Trash2, Plus, Minus, HelpCircle, Home, ZapOff, AlertCircle, PhoneCall, Lock } from 'lucide-react';
 import { NICHES, FEATURES, PRICING_TIERS, TONES, FAQ_ITEMS } from './constants';
 import { NicheType, ViewType, ToneType, ModelType, HistoryItem } from './types';
 import { BLOG_POSTS, BlogPost } from './src/blogContent';
@@ -54,7 +54,7 @@ const App: React.FC = () => {
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'ai', content: string }[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
-  const [pendingTier, setPendingTier] = useState<'Pro' | 'Enterprise' | 'Starter'>('Starter');
+
   const [teamMembers, setTeamMembers] = useState<{ email: string, role: string }[]>([]);
   const [teamEmailInput, setTeamEmailInput] = useState('');
   const [password, setPassword] = useState('');
@@ -195,19 +195,7 @@ const App: React.FC = () => {
       }
     });
 
-    // Check for payment success in URL and refetch profile
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('payment_success') === 'true') {
-      console.log("Payment success detected in URL, refreshing profile...");
-      // Wait a bit for webhook to process, then refetch
-      setTimeout(() => {
-        if (supabase.auth.getSession()) {
-          supabase.auth.getSession().then(({ data }) => {
-            if (data.session) fetchProfile(data.session.user.id);
-          });
-        }
-      }, 3000);
-    }
+
 
     return () => subscription.unsubscribe();
   }, []);
@@ -325,14 +313,8 @@ const App: React.FC = () => {
           }
         }
 
-        console.log("Signup successful. Intent:", pendingTier);
-
-        // If user signed up with intent to buy Pro/Enterprise, redirect them now
-        if (pendingTier !== 'Starter') {
-          redirectToPayment(pendingTier, email);
-        } else {
-          if (data.session) setView('dashboard');
-        }
+        console.log("Signup successful.");
+        if (data.session) setView('dashboard');
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email,
@@ -359,21 +341,8 @@ const App: React.FC = () => {
         setUserEmail(dbEmail);
         setIsAuthenticated(true);
 
-        console.log(`Login successful. DB Tier: ${normalizedTier}, Intent: ${pendingTier}`);
-
-        // Redirection Logic:
-        // 1. If user already has the pending tier or higher, go to dashboard
-        if (normalizedTier === pendingTier || (normalizedTier === 'Enterprise' && pendingTier === 'Pro')) {
-          setView('dashboard');
-        }
-        // 2. If user intended to buy a higher tier than they have, redirect to Dodo
-        else if (pendingTier !== 'Starter' && normalizedTier === 'Starter') {
-          redirectToPayment(pendingTier, email);
-        }
-        // 3. Default to dashboard for regular logins
-        else {
-          setView('dashboard');
-        }
+        console.log(`Login successful. DB Tier: ${normalizedTier}`);
+        setView('dashboard');
       }
 
       setShowAuthModal(false);
@@ -385,34 +354,10 @@ const App: React.FC = () => {
     }
   };
 
-  const redirectToPayment = (tier: 'Pro' | 'Enterprise', email: string) => {
-    const paymentUrl = tier === 'Pro'
-      ? import.meta.env.VITE_DODO_PAYMENT_LINK_PRO
-      : import.meta.env.VITE_DODO_PAYMENT_LINK_ENTERPRISE;
 
-    if (paymentUrl) {
-      const returnUrl = `${window.location.origin}?payment_success=true`;
-      const finalUrl = `${paymentUrl}&customer_email=${encodeURIComponent(email || '')}&redirect_url=${encodeURIComponent(returnUrl)}`;
-      console.log(`Redirecting to payment: ${finalUrl}`);
-      window.location.href = finalUrl;
-    } else {
-      alert("Payment link configuration missing. Please check settings.");
-    }
-  };
 
-  const handlePurchase = (rawTier: string) => {
-    let tier: 'Pro' | 'Enterprise' = 'Pro';
-    if (rawTier.includes('Enterprise')) tier = 'Enterprise';
 
-    setPendingTier(tier);
-    if (!isAuthenticated) {
-      setAuthMode('signup');
-      setShowAuthModal(true);
-      // The handleAuth function will take over after successful signup/login
-    } else {
-      redirectToPayment(tier, userEmail);
-    }
-  };
+
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -423,6 +368,28 @@ const App: React.FC = () => {
     localStorage.removeItem('gist_team_list');
     setView('landing');
   };
+
+  const handlePurchase = (rawTier: string) => {
+    // Determine which tier was clicked
+    if (rawTier.includes('Starter')) {
+      // For Starter, just scroll to workspace or show message
+      setView('landing');
+      return;
+    }
+
+    let tier: 'Pro' | 'Enterprise' = 'Pro';
+    if (rawTier.includes('Enterprise')) {
+      tier = 'Enterprise';
+    }
+
+    // Directly set the tier and open workspace
+    setUserTier(tier);
+    setView('dashboard');
+    setDashboardView('workspace');
+
+    console.log(`${tier} workspace opened directly`);
+  };
+
 
   const callSecondaryModel = async (text: string, tone: ToneType, niche: NicheType, apiKey: string) => {
     // 1. Check for xAI (Grok) Key
@@ -959,6 +926,81 @@ const App: React.FC = () => {
   );
 
 
+  const renderInsights = () => {
+    try {
+      const charLimit = getTierLimits().charLimit || 800;
+      const dailyCap = getTierLimits().dailyCap;
+      const cloudDocs = Array.isArray(history) ? history.length : 0;
+      const wordsClarified = Array.isArray(history)
+        ? history.reduce((acc, item) => acc + (item.input?.split(' ').length || 0), 0)
+        : 0;
+
+      const stats = [
+        { label: 'Cloud Documents', value: cloudDocs, icon: FileText, color: 'indigo' },
+        { label: 'Words Clarified', value: wordsClarified.toLocaleString(), icon: Sparkles, color: 'emerald' },
+        { label: 'Daily Energy', value: `${usageCount}/${dailyCap === Infinity ? '∞' : dailyCap}`, icon: Zap, color: 'amber' },
+        { label: 'Capacity', value: `${(charLimit / 1000).toFixed(1)}k`, icon: Activity, color: 'fuchsia' }
+      ];
+
+      return (
+        <div className="max-w-6xl space-y-8 animate-in fade-in duration-500">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            <div>
+              <h3 className="text-4xl font-black italic tracking-tighter uppercase mb-2">Workspace Insights</h3>
+              <p className="opacity-40 font-bold uppercase tracking-[0.2em] text-[10px]">Real-time analytics & plan status</p>
+            </div>
+
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {stats.map((stat, i) => (
+              <div key={i} className={`p-8 rounded-[2.5rem] border-2 flex flex-col justify-between group hover:scale-[1.02] transition-all duration-500 ${isDarkMode ? 'bg-slate-900/40 border-slate-800/50 hover:border-indigo-500/30' : 'bg-white border-slate-100 shadow-sm'}`}>
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 ${isDarkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
+                  <stat.icon className={`w-6 h-6 text-${stat.color}-500`} />
+                </div>
+                <div>
+                  <p className="text-3xl font-black tracking-tighter mb-1">{stat.value}</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40">{stat.label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+
+          <div className={`p-10 rounded-[3rem] border-2 bg-gradient-to-br from-indigo-600/10 to-transparent ${isDarkMode ? 'border-indigo-500/20' : 'bg-indigo-50/50 border-indigo-100'}`}>
+            <h4 className="text-xl font-black uppercase tracking-tight mb-8">Tier Features</h4>
+            <div className="space-y-6">
+              {[
+                { label: 'Unlimited History', unlocked: true },
+                { label: 'Direct Dashboard Access', unlocked: true },
+                { label: 'PDF/DOCX Uploads', unlocked: userTier !== 'Starter' },
+                { label: 'Deep Dive Chat', unlocked: userTier !== 'Starter' },
+                { label: 'OCR Image Analysis', unlocked: userTier === 'Enterprise' },
+                { label: 'Team Portal', unlocked: userTier === 'Enterprise' }
+              ].map((feat, i) => (
+                <div key={i} className="flex items-center gap-4">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${feat.unlocked ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-500/10 text-slate-500'}`}>
+                    {feat.unlocked ? <Check className="w-5 h-5" /> : <Lock className="w-4 h-4" />}
+                  </div>
+                  <span className={`text-sm font-bold ${feat.unlocked ? 'opacity-90' : 'opacity-30 line-through'}`}>{feat.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    } catch (err) {
+      console.error("Insights Logic Error:", err);
+      return (
+        <div className="p-12 rounded-[2.5rem] border-2 border-red-500/20 bg-red-500/5 text-red-500 text-center">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4" />
+          <h3 className="text-2xl font-black mb-2 uppercase">Analytics Error</h3>
+          <p className="font-bold opacity-70">We couldn't calculate your workspace metrics. Start simplifying to generate some data!</p>
+        </div>
+      );
+    }
+  };
+
 
   const renderDashboard = () => (
     <div className={`flex h-screen overflow-hidden ${isDarkMode ? 'bg-[#020617]' : 'bg-slate-50'}`}>
@@ -987,20 +1029,12 @@ const App: React.FC = () => {
             </button>
           ))}
 
-          <div className="pt-4 border-t border-slate-800/10">
-            <button
-              onClick={() => setView('landing')}
-              className={`w-full flex items-center justify-center lg:justify-start gap-4 p-4 rounded-2xl transition-all ${isDarkMode ? 'text-slate-500 hover:bg-slate-900 hover:text-indigo-400' : 'text-slate-400 hover:bg-slate-100 hover:text-indigo-600'}`}
-            >
-              <Home className="w-6 h-6" />
-              <span className="font-bold hidden lg:block">Back to Home</span>
-            </button>
-          </div>
+
         </nav>
         <div className="p-4 border-t border-slate-800/20 space-y-2">
           {userTier === 'Pro' && (
             <button
-              onClick={() => { setPendingTier('Enterprise'); handlePurchase('Enterprise'); }}
+              onClick={() => { handlePurchase('Enterprise'); }}
               className="w-full mb-4 group relative overflow-hidden flex items-center justify-center lg:justify-start gap-4 p-4 rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-600 text-white font-black shadow-lg shadow-indigo-500/20 hover:scale-[1.02] transition-all"
             >
               <Zap className="w-6 h-6 fill-current" />
@@ -1039,18 +1073,11 @@ const App: React.FC = () => {
             </button>
             <div>
               <div className="flex items-center gap-4 mb-1">
-                <h1 className="text-4xl font-black tracking-tighter uppercase italic">{userTier === 'Starter' ? 'Processing Payment' : `${userTier} Workspace`}</h1>
-                {userTier === 'Starter' && isAuthenticated && (
-                  <button
-                    onClick={() => supabase.auth.getSession().then(({ data }) => data.session && fetchProfile(data.session.user.id))}
-                    className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-indigo-500 bg-indigo-500/10 px-3 py-1 rounded-full hover:bg-indigo-500/20 transition-all pointer-events-auto animate-pulse"
-                  >
-                    <Zap className="w-3 h-3" /> Refresh Status
-                  </button>
-                )}
+                <h1 className="text-4xl font-black tracking-tighter uppercase italic">{userTier} Plan Workspace</h1>
+
               </div>
               <p className="opacity-40 font-bold uppercase tracking-[0.2em] text-[10px]">
-                {userTier === 'Starter' ? 'Your premium access is being unlocked. Hang tight.' : 'Active Session & Control Center'}
+                {userTier === 'Starter' ? 'Basic tools for text simplification' : `Unlocked high-efficiency ${userTier} features.`}
               </p>
             </div>
           </div>
@@ -1407,132 +1434,7 @@ const App: React.FC = () => {
           )
         }
         {
-          dashboardView === 'usage' && (
-            <div className="max-w-6xl space-y-8 animate-in fade-in duration-700">
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-                <div>
-                  <h3 className="text-4xl font-black italic tracking-tighter uppercase mb-2">Workspace Insights</h3>
-                  <p className="opacity-40 font-bold uppercase tracking-[0.2em] text-[10px]">Real-time analytics & plan status</p>
-                </div>
-                <div className={`px-6 py-3 rounded-2xl border-2 flex items-center gap-3 ${isDarkMode ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400' : 'bg-indigo-50 border-indigo-100 text-indigo-600'}`}>
-                  <ShieldCheck className="w-5 h-5" />
-                  <span className="text-xs font-black uppercase tracking-widest">{userTier} Membership</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {[
-                  { label: 'Cloud Documents', value: history.length, icon: <FileText className="w-5 h-5" />, color: 'indigo' },
-                  { label: 'Words Clarified', value: (history.reduce((acc, item) => acc + item.input.split(' ').length, 0)).toLocaleString(), icon: <Sparkles className="w-5 h-5" />, color: 'emerald' },
-                  { label: 'Daily Energy', value: `${usageCount}/${getTierLimits().dailyCap === Infinity ? '∞' : getTierLimits().dailyCap}`, icon: <Zap className="w-5 h-5" />, color: 'amber' },
-                  { label: 'Capacity', value: `${(getTierLimits().charLimit / 1000).toFixed(1)}k`, icon: <Activity className="w-5 h-5" />, color: 'fuchsia' }
-                ].map((stat, i) => (
-                  <div key={i} className={`p-8 rounded-[2.5rem] border-2 flex flex-col justify-between group hover:scale-[1.02] transition-all duration-500 ${isDarkMode ? 'bg-slate-900/40 border-slate-800/50 hover:border-indigo-500/30' : 'bg-white border-slate-100 shadow-sm'}`}>
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 ${isDarkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
-                      {React.cloneElement(stat.icon as React.ReactElement, { className: `w-6 h-6 text-${stat.color}-500` })}
-                    </div>
-                    <div>
-                      <p className="text-3xl font-black tracking-tighter mb-1">{stat.value}</p>
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40">{stat.label}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid lg:grid-cols-3 gap-8">
-                <div className={`lg:col-span-2 p-10 rounded-[3rem] border-2 flex flex-col ${isDarkMode ? 'bg-slate-900/40 border-slate-800/50' : 'bg-white border-slate-100 shadow-sm'}`}>
-                  <h4 className="text-xl font-black uppercase tracking-tight mb-8">Plan Utilization</h4>
-                  <div className="space-y-8">
-                    <div>
-                      <div className="flex justify-between items-end mb-3">
-                        <span className="text-sm font-bold opacity-60">Character Limit Usage</span>
-                        <span className="text-xs font-black italic">{((inputText.length / getTierLimits().charLimit) * 100).toFixed(1)}%</span>
-                      </div>
-                      <div className={`h-4 rounded-full overflow-hidden ${isDarkMode ? 'bg-white/5' : 'bg-slate-100'}`}>
-                        <div
-                          className="h-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 transition-all duration-1000"
-                          style={{ width: `${Math.min(100, (inputText.length / getTierLimits().charLimit) * 100)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between items-end mb-3">
-                        <span className="text-sm font-bold opacity-60">Daily Requests Remaining</span>
-                        <span className="text-xs font-black italic">
-                          {getTierLimits().dailyCap === Infinity ? 'Unlimited' : `${getTierLimits().dailyCap - usageCount} Gists Left`}
-                        </span>
-                      </div>
-                      <div className={`h-4 rounded-full overflow-hidden ${isDarkMode ? 'bg-white/5' : 'bg-slate-100'}`}>
-                        <div
-                          className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all duration-1000"
-                          style={{ width: `${getTierLimits().dailyCap === Infinity ? 100 : Math.max(0, (1 - usageCount / getTierLimits().dailyCap) * 100)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-12 pt-12 border-t border-white/5 grid md:grid-cols-2 gap-8">
-                    <div>
-                      <h5 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-40 mb-6">Account Details</h5>
-                      <div className="space-y-4">
-                        <div className="flex justify-between border-b border-white/5 pb-4">
-                          <span className="text-xs font-bold opacity-50 italic">User ID</span>
-                          <span className="text-xs font-mono opacity-80">{userEmail}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-white/5 pb-4">
-                          <span className="text-xs font-bold opacity-50 italic">Joined</span>
-                          <span className="text-xs font-black opacity-80 uppercase tracking-widest">{new Date().getFullYear()}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <h5 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-40 mb-6">Billing & Status</h5>
-                      <div className="space-y-4">
-                        <div className="flex justify-between border-b border-white/5 pb-4">
-                          <span className="text-xs font-bold opacity-50 italic">Method</span>
-                          <span className="text-xs font-black opacity-80 uppercase tracking-widest">Dodo Secure</span>
-                        </div>
-                        <div className="flex justify-between border-b border-white/5 pb-4">
-                          <span className="text-xs font-bold opacity-50 italic">Last Sync</span>
-                          <span className="text-xs font-black opacity-80 uppercase tracking-widest">Just now</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className={`p-10 rounded-[3rem] border-2 bg-gradient-to-br from-indigo-600/10 to-transparent ${isDarkMode ? 'border-indigo-500/20' : 'bg-indigo-50/50 border-indigo-100'}`}>
-                  <h4 className="text-xl font-black uppercase tracking-tight mb-8">Tier Features</h4>
-                  <div className="space-y-6">
-                    {[
-                      { label: 'Unlimited History', unlocked: true },
-                      { label: 'Direct Dashboard Access', unlocked: true },
-                      { label: 'PDF/DOCX Uploads', unlocked: userTier !== 'Starter' },
-                      { label: 'Deep Dive Chat', unlocked: userTier !== 'Starter' },
-                      { label: 'OCR Image Analysis', unlocked: userTier === 'Enterprise' },
-                      { label: 'Team Portal', unlocked: userTier === 'Enterprise' }
-                    ].map((feat, i) => (
-                      <div key={i} className="flex items-center gap-4">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${feat.unlocked ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-500/10 text-slate-500'}`}>
-                          {feat.unlocked ? <Check className="w-5 h-5" /> : <Lock className="w-4 h-4" />}
-                        </div>
-                        <span className={`text-sm font-bold ${feat.unlocked ? 'opacity-90' : 'opacity-30 line-through'}`}>{feat.label}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {userTier !== 'Enterprise' && (
-                    <button
-                      onClick={() => handlePurchase(userTier === 'Starter' ? 'Pro' : 'Enterprise')}
-                      className="w-full mt-10 py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-xl shadow-indigo-600/30"
-                    >
-                      Unlock Everything
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )
+          dashboardView === 'usage' && renderInsights()
         }
         {
           dashboardView === 'team' && userTier === 'Enterprise' && renderTeam()
@@ -1710,18 +1612,97 @@ const App: React.FC = () => {
   };
 
   const renderBlogList = () => (
-    <div className="max-w-4xl mx-auto px-6 py-32">
-      <button onClick={() => setView('landing')} className="flex items-center gap-2 text-indigo-500 font-black uppercase tracking-widest text-xs mb-12 hover:-translate-x-1 transition-transform">
-        <ArrowRight className="w-4 h-4 rotate-180" /> Back to Home
-      </button>
-      <h1 className="text-5xl font-black mb-12 tracking-tighter uppercase italic">The babysimple Blog archive.</h1>
-      <div className="grid gap-12">
-        {BLOG_POSTS.map(post => (
-          <div key={post.id} className={`p-10 rounded-[3rem] border-2 transition-all hover:scale-[1.02] cursor-pointer ${isDarkMode ? 'bg-slate-900/40 border-slate-800 hover:border-indigo-500/50' : 'bg-white border-slate-100 shadow-sm hover:border-indigo-200'}`} onClick={() => { setSelectedBlogPostId(post.id); setView('blog-post'); window.history.pushState({}, '', `/blog/${post.slug}`); window.scrollTo(0, 0); }}>
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-500 mb-4 block">{post.date}</span>
-            <h3 className="text-2xl font-black mb-4 uppercase italic">{post.title}</h3>
-            <p className={`text-lg font-medium opacity-60 leading-relaxed mb-6 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{post.excerpt}</p>
-            <div className="flex items-center gap-2 text-indigo-500 font-black uppercase tracking-widest text-xs">Read More <ArrowRight className="w-4 h-4" /></div>
+    <div className={`max-w-7xl mx-auto px-6 py-32 transition-colors duration-500 ${isDarkMode ? 'bg-[#020617]' : 'bg-[#f8fafc]'}`}>
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-20 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div>
+          <button
+            onClick={() => setView('landing')}
+            className="flex items-center gap-2 text-indigo-500 font-black uppercase tracking-[0.2em] text-[10px] mb-6 hover:-translate-x-1 transition-transform group"
+          >
+            <ArrowRight className="w-4 h-4 rotate-180 transition-transform group-hover:-translate-x-1" /> Back to Home
+          </button>
+          <h1 className="text-6xl font-black mb-4 tracking-tighter leading-none">The babysimple Blog.</h1>
+          <p className="opacity-40 font-bold uppercase tracking-[0.2em] text-xs">Clarity as a competitive advantage in 2026</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+        {BLOG_POSTS.map((post, idx) => (
+          <div
+            key={post.id}
+            className={`group relative flex flex-col rounded-[2.5rem] border-2 overflow-hidden transition-all duration-500 hover:scale-[1.02] hover:shadow-2xl cursor-pointer animate-in fade-in slide-in-from-bottom-8 fill-mode-both ${isDarkMode ? 'bg-[#0f172a] border-slate-800 hover:border-indigo-500/50 hover:shadow-indigo-500/10' : 'bg-white border-slate-100 shadow-sm hover:border-indigo-200 hover:shadow-indigo-500/5'}`}
+            style={{ animationDelay: `${idx * 100}ms` }}
+            onClick={() => {
+              setSelectedBlogPostId(post.id);
+              setView('blog-post');
+              window.history.pushState({}, '', `/blog/${post.slug}`);
+              window.scrollTo(0, 0);
+            }}
+          >
+            {/* Image Section */}
+            <div className="relative h-72 overflow-hidden">
+              <img
+                src={post.image}
+                alt={post.title}
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+              {/* Badges */}
+              <div className="absolute top-6 left-6 flex flex-wrap gap-2">
+                <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md shadow-lg ${isDarkMode ? 'bg-indigo-600/90 text-white' : 'bg-slate-900/90 text-white'}`}>
+                  {post.category}
+                </div>
+              </div>
+
+              {post.isFeatured && (
+                <div className="absolute top-6 right-6 px-4 py-1.5 rounded-full bg-amber-400/90 backdrop-blur-sm text-slate-900 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg scale-100 group-hover:scale-110 transition-transform">
+                  <Sparkles className="w-3 h-3 fill-current" /> Featured
+                </div>
+              )}
+            </div>
+
+            {/* Content Section */}
+            <div className="p-8 flex-1 flex flex-col">
+              <div className="flex items-center gap-2 mb-4 opacity-50">
+                <History className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-black uppercase tracking-widest">{post.readingTime}</span>
+              </div>
+
+              <h3 className="text-2xl font-black mb-4 leading-tight group-hover:text-indigo-500 transition-colors tracking-tighter">
+                {post.title}
+              </h3>
+
+              <p className={`text-sm font-medium leading-relaxed mb-8 line-clamp-3 opacity-60 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                {post.excerpt}
+              </p>
+
+              {/* Author & Tags */}
+              <div className="mt-auto space-y-6">
+                <div className={`flex items-center justify-between pt-6 border-t ${isDarkMode ? 'border-white/5' : 'border-slate-100'}`}>
+                  <div className="flex items-center gap-3">
+                    <img src={post.author.avatar} alt={post.author.name} className="w-10 h-10 rounded-full border-2 border-indigo-500/20" />
+                    <div>
+                      <p className="text-[10px] opacity-40 font-bold leading-none">{post.author.date}</p>
+                    </div>
+                  </div>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all group-hover:translate-x-1 ${isDarkMode ? 'bg-white/5 group-hover:bg-indigo-500 group-hover:text-white' : 'bg-slate-50 group-hover:bg-indigo-600 group-hover:text-white'}`}>
+                    <ChevronRight className="w-4 h-4" />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {post.tags?.map(tag => (
+                    <span
+                      key={tag}
+                      className={`px-3 py-1 rounded-lg text-[9px] font-black tracking-tighter border transition-all ${isDarkMode ? 'bg-white/5 border-white/5 text-slate-400 group-hover:border-indigo-500/30' : 'bg-slate-50 border-slate-100 text-slate-500 group-hover:border-indigo-100'}`}
+                    >
+                      #{tag.replace(/\s+/g, '')}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         ))}
       </div>
@@ -2138,36 +2119,50 @@ const App: React.FC = () => {
           {renderBlogContent(post.content)}
         </div>
 
-        {/* Comparison Hub */}
-        <div className={`mt-24 p-12 rounded-[3.5rem] border-2 transition-all duration-500 hover:scale-[1.01] ${isDarkMode ? 'bg-slate-900/50 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
-          <h3 className="text-2xl font-black mb-8 uppercase tracking-tighter text-indigo-500">The Comparison Hub</h3>
-          <p className="text-lg font-bold mb-8 opacity-80 uppercase tracking-tight">Want to see how BabySimple stacks up against others?</p>
+        {/* Related Sections */}
+        <div className="mt-32">
+          {(() => {
+            const sameCategory = BLOG_POSTS.filter(p => p.category === post.category && p.id !== post.id);
+            const otherCategory = BLOG_POSTS.filter(p => p.category !== post.category && p.id !== post.id);
+            const relatedPostsArr = [...sameCategory, ...otherCategory].slice(0, 3);
 
-          <div className="grid gap-6">
-            {(post.hubLinks || [
-              { title: 'BabySimple vs ChatGPT', slug: 'babysimple-vs-chatgpt' },
-              { title: 'BabySimple vs Hemingway', slug: 'babysimple-vs-hemingway' },
-              { title: 'BabySimple vs Claude', slug: 'babysimple-vs-claude' }
-            ]).map((hubLink, hi) => (
-              hubLink.slug !== post.slug && (
-                <button
-                  key={hi}
-                  onClick={() => {
-                    const linkedPost = BLOG_POSTS.find(p => p.slug === hubLink.slug);
-                    if (linkedPost) {
-                      setSelectedBlogPostId(linkedPost.id);
-                      window.scrollTo(0, 0);
-                      window.history.pushState({}, '', `/blog/${hubLink.slug}`);
-                    }
-                  }}
-                  className={`group flex items-center justify-between p-6 rounded-3xl border-2 transition-all ${isDarkMode ? 'bg-slate-950 border-slate-800 hover:border-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-500'}`}
-                >
-                  <span className="text-lg font-black tracking-tight uppercase group-hover:text-indigo-500 transition-colors">{hubLink.title}</span>
-                  <ArrowRight className="w-5 h-5 group-hover:translate-x-2 transition-transform text-indigo-500" />
-                </button>
-              )
-            ))}
-          </div>
+            if (relatedPostsArr.length === 0) return null;
+            return (
+              <div className="animate-in fade-in slide-in-from-bottom-8 duration-700">
+                <div className="flex items-center justify-between mb-10 border-b border-white/5 pb-6">
+                  <div>
+                    <h3 className="text-3xl font-black tracking-tighter leading-none mb-2">Related Posts</h3>
+                    <p className="opacity-40 font-bold uppercase tracking-[0.2em] text-[10px]">Read more from our library</p>
+                  </div>
+                  <button onClick={() => { setView('blog'); window.scrollTo(0, 0); }} className="hidden md:flex items-center gap-2 text-indigo-500 font-black uppercase tracking-widest text-[10px] hover:translate-x-1 transition-transform">
+                    View All <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                  {relatedPostsArr.map(related => (
+                    <div key={related.id} onClick={() => { setSelectedBlogPostId(related.id); window.scrollTo(0, 0); window.history.pushState({}, '', `/blog/${related.slug}`); }} className={`group cursor-pointer rounded-[2rem] border-2 overflow-hidden transition-all duration-500 hover:scale-[1.02] hover:shadow-xl ${isDarkMode ? 'bg-[#0f172a] border-slate-800 hover:border-indigo-500/30' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
+                      <div className="h-48 overflow-hidden relative">
+                        <img src={related.image} alt={related.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                        <div className="absolute top-4 left-4 px-3 py-1 rounded-full bg-indigo-600/90 backdrop-blur-md text-[8px] font-black uppercase tracking-widest text-white">
+                          {related.category}
+                        </div>
+                      </div>
+                      <div className="p-6">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-indigo-500 mb-2 block">{related.readingTime}</span>
+                        <h4 className="text-lg font-black leading-tight tracking-tight group-hover:text-indigo-500 transition-colors uppercase italic mb-4 line-clamp-2">{related.title}</h4>
+                        <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                          <div className="flex items-center gap-2">
+                            <img src={related.author.avatar} alt={related.author.name} className="w-6 h-6 rounded-full" />
+                          </div>
+                          <ChevronRight className="w-4 h-4 opacity-40 group-hover:translate-x-1 transition-transform" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         <div className="mt-12 p-12 rounded-[3.5rem] bg-gradient-to-br from-indigo-600 to-fuchsia-600 text-white text-center">
@@ -2218,8 +2213,23 @@ const App: React.FC = () => {
 
                       {/* Centered Navigation Links */}
                       <div className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center space-x-10">
-                        {['Features', 'Simulator', 'Pricing'].map((item) => (
-                          <a key={item} href={`#${item.toLowerCase()}`} className="text-sm font-bold hover:text-indigo-500 transition-colors relative group uppercase tracking-widest">
+                        {['About', 'Features', 'Simulator', 'Pricing', 'Blogs'].map((item) => (
+                          <a
+                            key={item}
+                            href={item === 'Blogs' ? '/blog' : item === 'About' ? '#' : `#${item.toLowerCase()}`}
+                            onClick={(e) => {
+                              if (item === 'Blogs') {
+                                e.preventDefault();
+                                setView('blog');
+                                window.history.pushState({}, '', '/blog');
+                                window.scrollTo(0, 0);
+                              } else if (item === 'About') {
+                                e.preventDefault();
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }
+                            }}
+                            className="text-sm font-bold hover:text-indigo-500 transition-colors relative group uppercase tracking-widest"
+                          >
                             {item}
                             <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-indigo-500 transition-all group-hover:w-full"></span>
                           </a>
@@ -2238,7 +2248,7 @@ const App: React.FC = () => {
                           </button>
                         ) : (
                           <button
-                            onClick={() => { setAuthMode('login'); setShowAuthModal(true); setPendingTier('Starter'); }}
+                            onClick={() => { setAuthMode('login'); setShowAuthModal(true); }}
                             className="bg-indigo-600 text-white px-8 py-2.5 rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-lg shadow-indigo-600/20"
                           >
                             Login
@@ -2266,8 +2276,25 @@ const App: React.FC = () => {
                     {isMenuOpen && (
                       <div className={`md:hidden p-6 border-t animate-in slide-in-from-top-4 duration-300 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100'}`}>
                         <div className="flex flex-col space-y-6 font-black uppercase tracking-widest">
-                          {['Features', 'Simulator', 'Pricing'].map(item => (
-                            <a key={item} href={`#${item.toLowerCase()}`} onClick={() => setIsMenuOpen(false)}>{item}</a>
+                          {['About', 'Features', 'Simulator', 'Pricing', 'Blogs'].map(item => (
+                            <a
+                              key={item}
+                              href={item === 'Blogs' ? '/blog' : item === 'About' ? '#' : `#${item.toLowerCase()}`}
+                              onClick={(e) => {
+                                setIsMenuOpen(false);
+                                if (item === 'Blogs') {
+                                  e.preventDefault();
+                                  setView('blog');
+                                  window.history.pushState({}, '', '/blog');
+                                  window.scrollTo(0, 0);
+                                } else if (item === 'About') {
+                                  e.preventDefault();
+                                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }
+                              }}
+                            >
+                              {item}
+                            </a>
                           ))}
                           {isAuthenticated ? (
                             <button
