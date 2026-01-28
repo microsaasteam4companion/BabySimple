@@ -429,7 +429,7 @@ const App: React.FC = () => {
             content: systemPrompt
           }, {
             role: 'user',
-            content: isShort ? `Translate this term to simple everyday ${targetLanguage}: "${text}"` : `Simplify this text in ${targetLanguage} language: "${text}"`
+            content: isShort ? `Translate this term to simple everyday ${targetLanguage}: "${text}". \n\nIMPORTANT: Return ONLY the simple equivalent. At the end, add: "Want an example?"` : `Simplify this text in ${targetLanguage} language: "${text}". \n\nKeep it very concise. At the end, add: "Want an example?"`
           }],
           model: "grok-beta",
           stream: false,
@@ -450,10 +450,10 @@ const App: React.FC = () => {
     const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
 
     const groqPrompt = isShort
-      ? `Provide the extremely concise, direct everyday ${targetLanguage} equivalent for this term. No bullet points, no explanations. Term: "${text}"`
-      : `Simplify the following ${niche} technical/jargon-heavy text into plain ${targetLanguage} for a layman. Use a ${tone} tone. Keep it concise.
-        Maintain a 6th-grade reading level. Break down jargon into everyday metaphors. Use bullet points for readability.
-        IMPORTANT: Use ONLY clear text paragraphs and bullet points. NEVER generate Mermaid code, flowcharts, or diagrams.
+      ? `Provide the extremely concise, direct everyday ${targetLanguage} equivalent for this term. Return ONLY the term. Then add a new line with "Want an example?". Term: "${text}"`
+      : `Simplify the following ${niche} technical text into plain ${targetLanguage}. Use a ${tone} tone. Keep it very short and punchy.
+        Maintain a 6th-grade reading level. Break down jargon into everyday metaphors. Use minimal bullet points.
+        At the end of your response, always ask: "Want an example?"
         Text: "${text}"`;
 
     const chatCompletion = await groq.chat.completions.create({
@@ -680,14 +680,15 @@ const App: React.FC = () => {
         const isShort = wordCount < 5;
 
         const prompt = isShort
-          ? `Provide the extremely concise, direct everyday ${targetLanguage} equivalent for this term. Return ONLY the simple term, no explanations or formatting. Term: "${currentText}"`
-          : `Simplify the following ${selectedNiche} technical/jargon-heavy text into plain ${targetLanguage} for a layman. 
-             Maintain a 6th-grade reading level. Break down jargon into everyday metaphors. Use bullet points for readability.
-             
-             IMPORTANT: NEVER generate Mermaid diagrams, flowcharts, or code blocks. Use ONLY plain text and bullet points.
-             
-             Text to simplify:
-             "${currentText}"`;
+          ? `Provide the extremely concise, direct everyday ${targetLanguage} equivalent for this term. Return ONLY the simple term. Then add a new line with "Want an example?". Term: "${currentText}"`
+          : `Simplify the following ${selectedNiche} technical text into plain ${targetLanguage} for a layman. 
+               Maintain a 6th-grade reading level. Keep it very concise (less is more).
+               
+               IMPORTANT: NEVER generate Mermaid diagrams or code blocks. Use plain text.
+               At the end of your response, always ask: "Want an example?"
+               
+               Text to simplify:
+               "${currentText}"`;
 
         // Use the robust multi-model fallback helper
         const { text, usedModel } = await callGeminiWithFallback(geminiKey, prompt);
@@ -756,14 +757,18 @@ const App: React.FC = () => {
       const geminiKey = getSafeKey(import.meta.env.VITE_API_KEY || import.meta.env.VITE_GEMINI_API_KEY);
       const groqKey = getSafeKey(import.meta.env.VITE_GROQ_API_KEY);
 
-      const prompt = `Context Material: "${inputText}"
-      Current Gist: "${outputText}"
-      
-      Chat History: ${chatMessages.map(m => `${m.role}: ${m.content}`).join('\n')}
-      
-      User Question: "${chatInput}"
-      
-      As an expert advisor, answer the user's question based on the provided context and gist. Keep it concise (under 3 sentences) and use a helpful, professional tone.`;
+      const isYes = chatInput.toLowerCase().trim().match(/^(yes|yeah|yep|sure|y|yes please|ok|okay|do it|tell me)$/);
+
+      const prompt = isYes
+        ? `The user wants an example for: "${inputText}". 
+           Provide a "Lemonade Stand" style analogy (like explaining to a 5-year-old). 
+           Use simple emojis, short lines, and a step-by-step "Imagine this" flow. 
+           Make it extremely relatable and fun.`
+        : `Context Material: "${inputText}"
+           Current Gist: "${outputText}"
+           Chat History: ${chatMessages.map(m => `${m.role}: ${m.content}`).join('\n')}
+           User Question: "${chatInput}"
+           As an expert advisor, answer the user's question. Keep it concise and professional.`;
 
       let responseText = "";
 
@@ -2376,12 +2381,11 @@ const App: React.FC = () => {
                   <section className="relative pt-32 pb-24 px-6 text-center">
                     <div className="max-w-6xl mx-auto">
                       <h1 className="text-4xl sm:text-5xl md:text-7xl font-[900] tracking-tighter mb-8 leading-[1.1] md:leading-[0.95]">
-                        Everything is <br className="hidden md:block" />
-                        <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 via-fuchsia-500 to-cyan-400">clearer with babysimple.</span>
+                        Stop Guessing. <br className="hidden md:block" />
+                        <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 via-fuchsia-500 to-cyan-400">Start Understanding.</span>
                       </h1>
                       <p className={`text-lg sm:text-xl md:text-2xl mb-12 max-w-3xl mx-auto leading-relaxed font-medium transition-opacity ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                        Tired of corporate doublespeak and dense legal jargon? <br className="hidden md:block" />
-                        We translate the complex into the everyday, instantly.
+                        Instant AI clarity for any document or technical jargon.
                       </p>
                       <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
                         <a href="#simulator" className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-10 py-5 rounded-[2rem] text-xl font-black shadow-2xl shadow-indigo-500/30 transition-all hover:scale-110 active:scale-95 flex items-center justify-center gap-3">
