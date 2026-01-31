@@ -30,8 +30,8 @@ serve(async (req) => {
 
             // Map Dodo Product IDs to your app tiers
             let tier = 'Starter'
-            if (productId === 'pdt_0NW89KALHGBo5694P8VWg') tier = 'Pro'
-            if (productId === 'pdt_0NW89QFRYI2zzcocabqRS') tier = 'Enterprise'
+            if (productId === 'pdt_0NW77NNGglpDSBHO0xvpv') tier = 'Pro'
+            if (productId === 'pdt_0NW77T1l278KigshYgKKQ') tier = 'Enterprise'
 
             if (tier === 'Starter') {
                 console.warn(`Unknown Product ID: ${productId}. No tier update performed.`);

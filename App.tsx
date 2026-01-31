@@ -361,6 +361,15 @@ const App: React.FC = () => {
 
       setShowAuthModal(false);
       setPassword('');
+
+      // CHECK FOR PENDING PAYMENT REDIRECT
+      const pendingTier = localStorage.getItem('pendingTier');
+      if (pendingTier) {
+        console.log(`Found pending tier request: ${pendingTier}. Redirecting to checkout...`);
+        localStorage.removeItem('pendingTier'); // Critical: One-time use
+        initiateCheckout(pendingTier, email);
+      }
+
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -383,6 +392,29 @@ const App: React.FC = () => {
     setView('landing');
   };
 
+  const initiateCheckout = (tier: string, email: string) => {
+    let url = "";
+    if (tier === 'Pro') {
+      url = import.meta.env.VITE_DODO_PAYMENT_LINK_PRO;
+    } else if (tier === 'Enterprise') {
+      url = import.meta.env.VITE_DODO_PAYMENT_LINK_ENTERPRISE;
+    }
+
+    if (!url) {
+      alert("Payment configuration missing. Please contact support.");
+      return;
+    }
+
+    // Append email to Dodo URL if supported/needed (optional but good for UX)
+    // Assuming Dodo supports ?customer_email= or ?email= param.
+    // Standard approach:
+    const paymentUrl = new URL(url);
+    paymentUrl.searchParams.set('email', email); // Dodo might use 'customer_email' or similar, standardizing on 'email' for now request
+
+    console.log(`Redirecting to Dodo: ${paymentUrl.toString()}`);
+    window.location.href = paymentUrl.toString();
+  };
+
   const handlePurchase = (rawTier: string) => {
     // Determine which tier was clicked
     if (rawTier.includes('Starter')) {
@@ -391,17 +423,22 @@ const App: React.FC = () => {
       return;
     }
 
-    let tier: 'Pro' | 'Enterprise' = 'Pro';
+    let tier = 'Pro';
     if (rawTier.includes('Enterprise')) {
       tier = 'Enterprise';
     }
 
-    // Directly set the tier and open workspace
-    setUserTier(tier);
-    setView('dashboard');
-    setDashboardView('workspace');
+    if (!isAuthenticated) {
+      // User needs to login/signup first
+      localStorage.setItem('pendingTier', tier);
+      setAuthMode('signup');
+      setShowAuthModal(true);
+      return;
+    }
 
-    console.log(`${tier} workspace opened directly`);
+    // User is ALREADY authenticated
+    // Direct redirect to payment
+    initiateCheckout(tier, userEmail);
   };
 
 
