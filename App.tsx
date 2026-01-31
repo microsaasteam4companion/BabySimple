@@ -2102,20 +2102,18 @@ const App: React.FC = () => {
         }
 
         // Handle FAQ Q&A
-        if (line.startsWith('**Q:')) {
+        if (line.trim().match(/^Q:/i)) {
           elements.push(
             <div key={`q-${i}`} className={`mt-10 p-6 rounded-2xl border-2 ${isDarkMode ? 'bg-indigo-500/5 border-indigo-500/20' : 'bg-slate-50 border-slate-200'}`}>
-              <p className="text-lg font-black text-indigo-500 uppercase tracking-tighter mb-2">Question:</p>
-              <p className="text-xl font-black mb-4 tracking-tight">{line.replace('**Q: ', '').replace('**', '')}</p>
+              <p className="text-xl font-black mb-4 tracking-tight text-indigo-500">{line.replace(/^Q:\s*/i, '').replace(/\*\*/g, '')}</p>
             </div>
           );
           return;
         }
-        if (line.startsWith('A: ')) {
+        if (line.trim().match(/^A:/i)) {
           elements.push(
             <div key={`a-${i}`} className={`p-6 pt-0 rounded-b-2xl border-2 border-t-0 -mt-2 mb-6 ${isDarkMode ? 'bg-indigo-500/5 border-indigo-500/20' : 'bg-slate-50 border-slate-200'}`}>
-              <p className="text-lg font-black text-emerald-500 uppercase tracking-tighter mb-2">Answer:</p>
-              <p className="text-lg font-medium leading-relaxed opacity-80">{line.replace('A: ', '')}</p>
+              <p className="text-lg font-medium leading-relaxed opacity-80">{line.replace(/^A:\s*/i, '')}</p>
             </div>
           );
           return;
