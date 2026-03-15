@@ -18,6 +18,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 import Tesseract from 'tesseract.js';
 import { SEO } from './src/components/SEO';
 import { SchemaMarkup } from './src/components/Schema';
+import UpvoteWidget from './src/components/UpvoteWidget';
 
 const App: React.FC = () => {
   const validateEmail = (email: string) => {
@@ -2877,6 +2878,8 @@ const App: React.FC = () => {
         )
       }
 
+      {/* Upvote / Support Widget — visible on all pages */}
+      <UpvoteWidget userId={session?.user?.id} email={userEmail} />
 
     </div >
   );
